@@ -22,6 +22,8 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Models
 class User(db.Model):
+    __tablename__ = "user_table"  # Ensure it matches PostgreSQL
+
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)  # Hashed password storage
@@ -31,32 +33,41 @@ class PDF(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(120), nullable=False)
     filepath = db.Column(db.String(255), nullable=False)
-    assigned_to = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    assigned_to = db.Column(db.Integer, db.ForeignKey('user_table.id'), nullable=False)
     viewed = db.Column(db.Boolean, default=False)
 
 # Routes
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    user = User.query.filter_by(username=data['username']).first()
-    
-    if user and check_password_hash(user.password_hash, data['password']):  
+    if not data or 'username' not in data or 'password' not in data:
+        return jsonify({'error': 'Invalid request'}), 400
+
+    user = db.session.execute(db.select(User).filter_by(username=data['username'])).scalar_one_or_none()
+
+    if user and check_password_hash(user.password_hash, data['password']):
         token = create_access_token(identity={'id': user.id, 'role': user.role})
         return jsonify({'token': token, 'role': user.role})
-    
+
     return jsonify({'error': 'Invalid credentials'}), 401
 
 @app.route('/register', methods=['POST'])
 def register():
     """ Register new users (for testing purposes) """
     data = request.json
+    if not data or 'username' not in data or 'password' not in data or 'role' not in data:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    existing_user = db.session.execute(db.select(User).filter_by(username=data['username'])).scalar_one_or_none()
+    if existing_user:
+        return jsonify({'error': 'Username already exists'}), 409
+
     hashed_password = generate_password_hash(data['password'])
-    
     new_user = User(username=data['username'], password_hash=hashed_password, role=data['role'])
     db.session.add(new_user)
     db.session.commit()
-    
-    return jsonify({'message': 'User registered successfully'})
+
+    return jsonify({'message': 'User registered successfully'}), 201
 
 @app.route('/upload_pdf', methods=['POST'])
 @jwt_required()
@@ -65,19 +76,30 @@ def upload_pdf():
     if user['role'] != 'manager':
         return jsonify({'error': 'Unauthorized'}), 403
 
-    file = request.files['file']
-    assigned_to = request.form['assigned_to']
-    
-    if file:
-        filename = secure_filename(file.filename)
+    file = request.files.get('file')
+    assigned_to = request.form.get('assigned_to')
+
+    if not file or not assigned_to:
+        return jsonify({'error': 'File and assigned user required'}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    # Ensure filename is unique
+    counter = 1
+    base, ext = os.path.splitext(filename)
+    while os.path.exists(filepath):
+        filename = f"{base}_{counter}{ext}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        
-        new_pdf = PDF(filename=filename, filepath=filepath, assigned_to=assigned_to)
-        db.session.add(new_pdf)
-        db.session.commit()
-        
-        return jsonify({'message': 'File uploaded successfully'})
+        counter += 1
+
+    file.save(filepath)
+
+    new_pdf = PDF(filename=filename, filepath=filepath, assigned_to=int(assigned_to))
+    db.session.add(new_pdf)
+    db.session.commit()
+
+    return jsonify({'message': 'File uploaded successfully'})
 
 @app.route('/get_pdfs', methods=['GET'])
 @jwt_required()
@@ -94,12 +116,12 @@ def get_pdfs():
 def mark_as_viewed(pdf_id):
     user = get_jwt_identity()
     pdf = PDF.query.filter_by(id=pdf_id, assigned_to=user['id']).first()
-    
+
     if pdf:
         pdf.viewed = True
         db.session.commit()
         return jsonify({'message': 'Marked as viewed'})
-    
+
     return jsonify({'error': 'PDF not found'}), 404
 
 # Run the app
