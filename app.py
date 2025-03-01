@@ -10,7 +10,11 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS
 
 # Load environment variables
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL").replace("postgres://", "postgresql://", 1)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL  # PostgreSQL on Render
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY", "your_fallback_secret_key")  # Secret key for JWT
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -23,7 +27,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Models
 class User(db.Model):
-    __tablename__ = "user_table"  # Ensure it matches PostgreSQL
+    __tablename__ = "user_table"  # Explicitly match PostgreSQL
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
