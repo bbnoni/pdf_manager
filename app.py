@@ -50,11 +50,14 @@ def login():
 
     user = db.session.execute(db.select(User).filter_by(username=data['username'])).scalar_one_or_none()
 
-    if user and check_password_hash(user.password_hash, data['password']):
-        token = create_access_token(identity={'id': user.id, 'role': user.role})
-        return jsonify({'token': token, 'role': user.role})
+    if user:
+        print(f"DEBUG: Found user {user.username}, Hash: {user.password_hash}")  # Debug print
+        if check_password_hash(user.password_hash, data['password']):
+            token = create_access_token(identity={'id': user.id, 'role': user.role})
+            return jsonify({'token': token, 'role': user.role})
 
     return jsonify({'error': 'Invalid credentials'}), 401
+
 
 @app.route('/register', methods=['POST'])
 def register():
