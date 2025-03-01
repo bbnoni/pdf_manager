@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
+from flask_bcrypt import Bcrypt  # Added Flask-Bcrypt for password hashing
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import os
@@ -21,6 +22,7 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
+bcrypt = Bcrypt(app)  # Initialize Flask-Bcrypt
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -52,12 +54,11 @@ def login():
 
     if user:
         print(f"DEBUG: Found user {user.username}, Hash: {user.password_hash}")  # Debug print
-        if check_password_hash(user.password_hash, data['password']):
+        if bcrypt.check_password_hash(user.password_hash, data['password']):
             token = create_access_token(identity={'id': user.id, 'role': user.role})
             return jsonify({'token': token, 'role': user.role})
 
     return jsonify({'error': 'Invalid credentials'}), 401
-
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -70,7 +71,7 @@ def register():
     if existing_user:
         return jsonify({'error': 'Username already exists'}), 409
 
-    hashed_password = generate_password_hash(data['password'])
+    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')  # Use Flask-Bcrypt
     new_user = User(username=data['username'], password_hash=hashed_password, role=data['role'])
     db.session.add(new_user)
     db.session.commit()
