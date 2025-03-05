@@ -36,6 +36,8 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False)  # "manager" or "agent"
 
 class PDF(db.Model):
+    __tablename__ = "pdfs"
+
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(120), nullable=False)
     filepath = db.Column(db.String(255), nullable=False)
@@ -130,8 +132,6 @@ def upload_pdf():
 
     return jsonify({'message': 'File uploaded successfully'})
 
-
-
 @app.route('/get_pdfs', methods=['GET'])
 @jwt_required()
 def get_pdfs():
@@ -172,13 +172,17 @@ def mark_as_viewed(pdf_id):
 @jwt_required()
 def get_agents():
     try:
-        agents = User.query.filter_by(role='agent').all()
-        return jsonify([{"id": agent.id, "username": agent.username} for agent in agents])
+        print("DEBUG: Fetching agents...")
+
+        agents = db.session.scalars(db.select(User).filter_by(role='agent')).all()
+        agent_list = [{"id": agent.id, "username": agent.username} for agent in agents]
+
+        print(f"DEBUG: Agents fetched successfully -> {agent_list}")
+
+        return jsonify(agent_list)
     except Exception as e:
         print(f"ERROR: Failed to fetch agents - {str(e)}")
         return jsonify({"error": "Failed to fetch agents"}), 500
-
-
 
 # Run the app
 if __name__ == '__main__':
