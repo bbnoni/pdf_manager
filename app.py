@@ -170,11 +170,16 @@ def get_pdfs():
 def serve_pdf(filename):
     """ Serve uploaded PDFs securely """
     pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    print(f"DEBUG: Checking PDF file -> {pdf_path}")
+
     if not os.path.exists(pdf_path):
-        print(f"ERROR: PDF {filename} not found")
+        print(f"ERROR: PDF {filename} not found in {app.config['UPLOAD_FOLDER']}")
         return jsonify({'error': 'File not found'}), 404
-    print(f"DEBUG: Serving PDF {filename}")
+
+    print(f"DEBUG: Serving PDF -> {filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 
 @app.route('/mark_as_viewed/<int:pdf_id>', methods=['POST'])
 @jwt_required()
