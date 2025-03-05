@@ -78,10 +78,14 @@ def register():
 @jwt_required()
 def upload_pdf():
     user = get_jwt_identity()
-    if user['role'] != 'manager':
-        return jsonify({'error': 'Unauthorized'}), 403
+    
+    print("DEBUG: Upload request received")
+    print(f"DEBUG: JWT Identity -> {user}")
+    print(f"DEBUG: Request Headers -> {request.headers}")  # Log headers to debug missing token
 
-    print("DEBUG: Received upload request")  # Log request
+    if user['role'] != 'manager':
+        print("ERROR: Unauthorized user attempted upload")
+        return jsonify({'error': 'Unauthorized'}), 403
 
     # Check if file and assigned_to are present
     if 'file' not in request.files:
@@ -98,30 +102,23 @@ def upload_pdf():
     print(f"DEBUG: Assigned to - {assigned_to}")
 
     if not assigned_to.isdigit():
+        print("ERROR: Invalid assigned_to value")
         return jsonify({'error': 'Invalid assigned_to value'}), 422
 
     assigned_user = db.session.get(User, int(assigned_to))
     if not assigned_user:
+        print("ERROR: Assigned user does not exist")
         return jsonify({'error': 'Assigned user does not exist'}), 404
 
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-    # Ensure filename is unique
-    counter = 1
-    base, ext = os.path.splitext(filename)
-    while os.path.exists(filepath):
-        filename = f"{base}_{counter}{ext}"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        counter += 1
-
     file.save(filepath)
+    print(f"DEBUG: PDF saved at {filepath}")
 
     new_pdf = PDF(filename=filename, filepath=filepath, assigned_to=int(assigned_to))
     db.session.add(new_pdf)
     db.session.commit()
-
-    print(f"DEBUG: PDF saved at {filepath}")
 
     return jsonify({'message': 'File uploaded successfully'})
 
