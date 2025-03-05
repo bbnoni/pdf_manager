@@ -123,15 +123,19 @@ def upload_pdf():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         counter += 1
 
+    # 🔹 DEBUG: Print the exact path where the file is being saved
+    print(f"DEBUG: Saving PDF at {filepath}")
+
     file.save(filepath)
 
     new_pdf = PDF(filename=filename, filepath=filepath, assigned_to=assigned_to)
     db.session.add(new_pdf)
     db.session.commit()
 
-    print(f"DEBUG: PDF saved at {filepath}")
+    print(f"DEBUG: PDF successfully saved at {filepath}")
 
     return jsonify({'message': 'File uploaded successfully'})
+
 
 @app.route('/get_agents', methods=['GET'])
 @jwt_required()
@@ -169,9 +173,9 @@ from flask import Flask, request, jsonify, send_from_directory
 import os
 
 @app.route('/serve_pdf/<filename>', methods=['GET'])
+@jwt_required()
 def serve_pdf(filename):
-    """ Serve uploaded PDFs securely for viewing and downloading """
-
+    """ Serve uploaded PDFs securely """
     pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
     print(f"DEBUG: Checking PDF file -> {pdf_path}")
@@ -180,8 +184,9 @@ def serve_pdf(filename):
         print(f"ERROR: PDF {filename} not found in {app.config['UPLOAD_FOLDER']}")
         return jsonify({'error': 'File not found'}), 404
 
-    print(f"DEBUG: Serving PDF -> {filename}")
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)  # 🔹 Enables downloading
+    print(f"DEBUG: Serving PDF -> {pdf_path}")
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+
 
 
 
