@@ -172,17 +172,25 @@ def mark_as_viewed(pdf_id):
 @jwt_required()
 def get_agents():
     try:
-        print("DEBUG: Fetching agents...")
+        user_identity = get_jwt_identity()  # Extract the identity from JWT token
+        print(f"DEBUG: Extracted user identity -> {user_identity}")
 
-        agents = db.session.scalars(db.select(User).filter_by(role='agent')).all()
-        agent_list = [{"id": agent.id, "username": agent.username} for agent in agents]
+        # Ensure the identity is a dictionary with "role"
+        if not isinstance(user_identity, dict) or "role" not in user_identity:
+            print("ERROR: Invalid JWT payload format")
+            return jsonify({"error": "Invalid token format"}), 400
 
-        print(f"DEBUG: Agents fetched successfully -> {agent_list}")
+        if user_identity["role"] != "manager":
+            print("ERROR: Unauthorized role")
+            return jsonify({"error": "Unauthorized"}), 403
 
-        return jsonify(agent_list)
+        agents = User.query.filter_by(role='agent').all()
+        return jsonify([{"id": agent.id, "username": agent.username} for agent in agents])
+
     except Exception as e:
         print(f"ERROR: Failed to fetch agents - {str(e)}")
         return jsonify({"error": "Failed to fetch agents"}), 500
+
 
 # Run the app
 if __name__ == '__main__':
