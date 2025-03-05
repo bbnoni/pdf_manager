@@ -168,6 +168,13 @@ def mark_as_viewed(pdf_id):
     print(f"ERROR: PDF {pdf_id} not found")
     return jsonify({'error': 'PDF not found'}), 404
 
+@app.route('/get_agents', methods=['GET'])
+@jwt_required()
+def get_agents():
+    agents = User.query.filter_by(role='agent').all()
+    return jsonify([{"id": agent.id, "username": agent.username} for agent in agents])
+
+
 # Run the app
 if __name__ == '__main__':
     with app.app_context():
