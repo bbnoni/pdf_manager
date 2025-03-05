@@ -5,6 +5,7 @@ from flask_cors import CORS
 from flask_bcrypt import Bcrypt
 from werkzeug.utils import secure_filename
 import os
+import json  # Import json to handle JWT identity conversion
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS
@@ -53,7 +54,8 @@ def login():
 
     user = db.session.execute(db.select(User).filter_by(username=data['username'])).scalar_one_or_none()
     if user and bcrypt.check_password_hash(user.password_hash, data['password']):
-        token = create_access_token(identity={'id': user.id, 'role': user.role})
+        # Fix: Store user identity as JSON string
+        token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
         return jsonify({'token': token, 'role': user.role})
 
     return jsonify({'error': 'Invalid credentials'}), 401
@@ -79,8 +81,8 @@ def register():
 @app.route('/upload_pdf', methods=['POST'])
 @jwt_required()
 def upload_pdf():
-    user = get_jwt_identity()
-    if user['role'] != 'manager':
+    user_identity = json.loads(get_jwt_identity())  # Decode the JWT identity
+    if user_identity['role'] != 'manager':
         return jsonify({'error': 'Unauthorized'}), 403
 
     print("DEBUG: Received upload request")  # Debugging log
@@ -96,7 +98,6 @@ def upload_pdf():
     file = request.files['file']
     assigned_to = request.form['assigned_to']
 
-    # Convert assigned_to to integer (Fix for 422 error)
     try:
         assigned_to = int(assigned_to)
     except ValueError:
@@ -132,14 +133,36 @@ def upload_pdf():
 
     return jsonify({'message': 'File uploaded successfully'})
 
+@app.route('/get_agents', methods=['GET'])
+@jwt_required()
+def get_agents():
+    try:
+        user_identity = json.loads(get_jwt_identity())  # Decode JWT identity
+        print(f"DEBUG: Extracted user identity -> {user_identity}")
+
+        if not isinstance(user_identity, dict) or "role" not in user_identity:
+            print("ERROR: Invalid JWT payload format")
+            return jsonify({"error": "Invalid token format"}), 400
+
+        if user_identity["role"] != "manager":
+            print("ERROR: Unauthorized role")
+            return jsonify({"error": "Unauthorized"}), 403
+
+        agents = User.query.filter_by(role='agent').all()
+        return jsonify([{"id": agent.id, "username": agent.username} for agent in agents])
+
+    except Exception as e:
+        print(f"ERROR: Failed to fetch agents - {str(e)}")
+        return jsonify({"error": "Failed to fetch agents"}), 500
+
 @app.route('/get_pdfs', methods=['GET'])
 @jwt_required()
 def get_pdfs():
-    user = get_jwt_identity()
-    if user['role'] != 'agent':
+    user_identity = json.loads(get_jwt_identity())  # Decode the JWT identity
+    if user_identity['role'] != 'agent':
         return jsonify({'error': 'Unauthorized'}), 403
 
-    pdfs = PDF.query.filter_by(assigned_to=user['id']).all()
+    pdfs = PDF.query.filter_by(assigned_to=user_identity['id']).all()
     return jsonify([{'id': p.id, 'filename': p.filename, 'url': f"/serve_pdf/{p.filename}", 'viewed': p.viewed} for p in pdfs])
 
 @app.route('/serve_pdf/<filename>', methods=['GET'])
@@ -156,8 +179,8 @@ def serve_pdf(filename):
 @app.route('/mark_as_viewed/<int:pdf_id>', methods=['POST'])
 @jwt_required()
 def mark_as_viewed(pdf_id):
-    user = get_jwt_identity()
-    pdf = PDF.query.filter_by(id=pdf_id, assigned_to=user['id']).first()
+    user_identity = json.loads(get_jwt_identity())  # Decode JWT identity
+    pdf = PDF.query.filter_by(id=pdf_id, assigned_to=user_identity['id']).first()
 
     if pdf:
         pdf.viewed = True
@@ -167,30 +190,6 @@ def mark_as_viewed(pdf_id):
 
     print(f"ERROR: PDF {pdf_id} not found")
     return jsonify({'error': 'PDF not found'}), 404
-
-@app.route('/get_agents', methods=['GET'])
-@jwt_required()
-def get_agents():
-    try:
-        user_identity = get_jwt_identity()  # Extract the identity from JWT token
-        print(f"DEBUG: Extracted user identity -> {user_identity}")
-
-        # Ensure the identity is a dictionary with "role"
-        if not isinstance(user_identity, dict) or "role" not in user_identity:
-            print("ERROR: Invalid JWT payload format")
-            return jsonify({"error": "Invalid token format"}), 400
-
-        if user_identity["role"] != "manager":
-            print("ERROR: Unauthorized role")
-            return jsonify({"error": "Unauthorized"}), 403
-
-        agents = User.query.filter_by(role='agent').all()
-        return jsonify([{"id": agent.id, "username": agent.username} for agent in agents])
-
-    except Exception as e:
-        print(f"ERROR: Failed to fetch agents - {str(e)}")
-        return jsonify({"error": "Failed to fetch agents"}), 500
-
 
 # Run the app
 if __name__ == '__main__':
