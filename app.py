@@ -3,7 +3,6 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
 from flask_bcrypt import Bcrypt
-from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import os
 
@@ -82,14 +81,24 @@ def upload_pdf():
     if user['role'] != 'manager':
         return jsonify({'error': 'Unauthorized'}), 403
 
-    if 'file' not in request.files or 'assigned_to' not in request.form:
-        return jsonify({'error': 'File and assigned user required'}), 400
+    print("DEBUG: Received upload request")  # Log request
+
+    # Check if file and assigned_to are present
+    if 'file' not in request.files:
+        print("ERROR: No file uploaded")
+        return jsonify({'error': 'No file uploaded'}), 422
+    if 'assigned_to' not in request.form:
+        print("ERROR: Missing assigned_to field")
+        return jsonify({'error': 'Missing assigned_to field'}), 422
 
     file = request.files['file']
     assigned_to = request.form['assigned_to']
 
+    print(f"DEBUG: File received - {file.filename}")
+    print(f"DEBUG: Assigned to - {assigned_to}")
+
     if not assigned_to.isdigit():
-        return jsonify({'error': 'Invalid assigned_to value'}), 400
+        return jsonify({'error': 'Invalid assigned_to value'}), 422
 
     assigned_user = db.session.get(User, int(assigned_to))
     if not assigned_user:
@@ -112,6 +121,8 @@ def upload_pdf():
     db.session.add(new_pdf)
     db.session.commit()
 
+    print(f"DEBUG: PDF saved at {filepath}")
+
     return jsonify({'message': 'File uploaded successfully'})
 
 @app.route('/get_pdfs', methods=['GET'])
@@ -130,7 +141,9 @@ def serve_pdf(filename):
     """ Serve uploaded PDFs securely """
     pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     if not os.path.exists(pdf_path):
+        print(f"ERROR: PDF {filename} not found")
         return jsonify({'error': 'File not found'}), 404
+    print(f"DEBUG: Serving PDF {filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 @app.route('/mark_as_viewed/<int:pdf_id>', methods=['POST'])
@@ -142,8 +155,10 @@ def mark_as_viewed(pdf_id):
     if pdf:
         pdf.viewed = True
         db.session.commit()
+        print(f"DEBUG: PDF {pdf_id} marked as viewed")
         return jsonify({'message': 'Marked as viewed'})
 
+    print(f"ERROR: PDF {pdf_id} not found")
     return jsonify({'error': 'PDF not found'}), 404
 
 # Run the app
