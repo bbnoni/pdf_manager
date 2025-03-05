@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
-from flask_bcrypt import Bcrypt  # Added Flask-Bcrypt for password hashing
+from flask_bcrypt import Bcrypt
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import os
@@ -17,23 +17,23 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL  # PostgreSQL on Render
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY", "your_fallback_secret_key")  # Secret key for JWT
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY", "your_fallback_secret_key")
+app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), "uploads")
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
-bcrypt = Bcrypt(app)  # Initialize Flask-Bcrypt
+bcrypt = Bcrypt(app)
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Models
 class User(db.Model):
-    __tablename__ = "user_table"  # Explicitly match PostgreSQL
+    __tablename__ = "user_table"
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)  # Hashed password storage
+    password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(10), nullable=False)  # "manager" or "agent"
 
 class PDF(db.Model):
@@ -51,12 +51,9 @@ def login():
         return jsonify({'error': 'Invalid request'}), 400
 
     user = db.session.execute(db.select(User).filter_by(username=data['username'])).scalar_one_or_none()
-
-    if user:
-        print(f"DEBUG: Found user {user.username}, Hash: {user.password_hash}")  # Debug print
-        if bcrypt.check_password_hash(user.password_hash, data['password']):
-            token = create_access_token(identity={'id': user.id, 'role': user.role})
-            return jsonify({'token': token, 'role': user.role})
+    if user and bcrypt.check_password_hash(user.password_hash, data['password']):
+        token = create_access_token(identity={'id': user.id, 'role': user.role})
+        return jsonify({'token': token, 'role': user.role})
 
     return jsonify({'error': 'Invalid credentials'}), 401
 
@@ -71,7 +68,7 @@ def register():
     if existing_user:
         return jsonify({'error': 'Username already exists'}), 409
 
-    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')  # Use Flask-Bcrypt
+    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
     new_user = User(username=data['username'], password_hash=hashed_password, role=data['role'])
     db.session.add(new_user)
     db.session.commit()
@@ -85,11 +82,18 @@ def upload_pdf():
     if user['role'] != 'manager':
         return jsonify({'error': 'Unauthorized'}), 403
 
-    file = request.files.get('file')
-    assigned_to = request.form.get('assigned_to')
-
-    if not file or not assigned_to:
+    if 'file' not in request.files or 'assigned_to' not in request.form:
         return jsonify({'error': 'File and assigned user required'}), 400
+
+    file = request.files['file']
+    assigned_to = request.form['assigned_to']
+
+    if not assigned_to.isdigit():
+        return jsonify({'error': 'Invalid assigned_to value'}), 400
+
+    assigned_user = db.session.get(User, int(assigned_to))
+    if not assigned_user:
+        return jsonify({'error': 'Assigned user does not exist'}), 404
 
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -118,7 +122,16 @@ def get_pdfs():
         return jsonify({'error': 'Unauthorized'}), 403
 
     pdfs = PDF.query.filter_by(assigned_to=user['id']).all()
-    return jsonify([{'id': p.id, 'filename': p.filename, 'url': p.filepath, 'viewed': p.viewed} for p in pdfs])
+    return jsonify([{'id': p.id, 'filename': p.filename, 'url': f"/serve_pdf/{p.filename}", 'viewed': p.viewed} for p in pdfs])
+
+@app.route('/serve_pdf/<filename>', methods=['GET'])
+@jwt_required()
+def serve_pdf(filename):
+    """ Serve uploaded PDFs securely """
+    pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(pdf_path):
+        return jsonify({'error': 'File not found'}), 404
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 @app.route('/mark_as_viewed/<int:pdf_id>', methods=['POST'])
 @jwt_required()
