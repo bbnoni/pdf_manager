@@ -82,6 +82,7 @@ def upload_pdf():
     print("DEBUG: Upload request received")
     print(f"DEBUG: JWT Identity -> {user}")
     print(f"DEBUG: Request Headers -> {request.headers}")
+    print(f"DEBUG: Request Form Data -> {request.form}")
 
     if user['role'] != 'manager':
         print("ERROR: Unauthorized user attempted upload")
@@ -99,10 +100,11 @@ def upload_pdf():
     assigned_to = request.form['assigned_to']
 
     print(f"DEBUG: File received - {file.filename}")
-    print(f"DEBUG: Assigned to - {assigned_to}")
+    print(f"DEBUG: Assigned to (RAW) - {assigned_to}")
 
+    # Ensure assigned_to is a valid string representation of an integer
     if not assigned_to.isdigit():
-        print("ERROR: Invalid assigned_to value")
+        print("ERROR: assigned_to is not a valid integer string")
         return jsonify({'error': 'Invalid assigned_to value'}), 422
 
     assigned_user = db.session.get(User, int(assigned_to))
@@ -121,6 +123,7 @@ def upload_pdf():
     db.session.commit()
 
     return jsonify({'message': 'File uploaded successfully'})
+
 
 
 @app.route('/get_pdfs', methods=['GET'])
