@@ -78,19 +78,15 @@ def register():
 @jwt_required()
 def upload_pdf():
     user = get_jwt_identity()
-    
-    print("DEBUG: Upload request received")
-    print(f"DEBUG: JWT Identity -> {user}")
-    print(f"DEBUG: Request Headers -> {request.headers}")
-    print(f"DEBUG: Request Form Data -> {request.form}")
-
     if user['role'] != 'manager':
-        print("ERROR: Unauthorized user attempted upload")
         return jsonify({'error': 'Unauthorized'}), 403
+
+    print("DEBUG: Received upload request")  # Debugging log
 
     if 'file' not in request.files:
         print("ERROR: No file uploaded")
         return jsonify({'error': 'No file uploaded'}), 422
+
     if 'assigned_to' not in request.form:
         print("ERROR: Missing assigned_to field")
         return jsonify({'error': 'Missing assigned_to field'}), 422
@@ -98,14 +94,17 @@ def upload_pdf():
     file = request.files['file']
     assigned_to = request.form['assigned_to']
 
-    print(f"DEBUG: File received - {file.filename}")
-    print(f"DEBUG: Assigned to (RAW) - {assigned_to} (Type: {type(assigned_to)})")
-
-    if not assigned_to.isdigit():
-        print("ERROR: assigned_to is not a valid integer string")
+    # Convert assigned_to to integer (Fix for 422 error)
+    try:
+        assigned_to = int(assigned_to)
+    except ValueError:
+        print("ERROR: assigned_to must be an integer")
         return jsonify({'error': 'Invalid assigned_to value'}), 422
 
-    assigned_user = db.session.get(User, int(assigned_to))
+    print(f"DEBUG: File received - {file.filename}")
+    print(f"DEBUG: Assigned to - {assigned_to}")
+
+    assigned_user = db.session.get(User, assigned_to)
     if not assigned_user:
         print("ERROR: Assigned user does not exist")
         return jsonify({'error': 'Assigned user does not exist'}), 404
@@ -113,12 +112,21 @@ def upload_pdf():
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-    file.save(filepath)
-    print(f"DEBUG: PDF saved at {filepath}")
+    # Ensure filename is unique
+    counter = 1
+    base, ext = os.path.splitext(filename)
+    while os.path.exists(filepath):
+        filename = f"{base}_{counter}{ext}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        counter += 1
 
-    new_pdf = PDF(filename=filename, filepath=filepath, assigned_to=int(assigned_to))
+    file.save(filepath)
+
+    new_pdf = PDF(filename=filename, filepath=filepath, assigned_to=assigned_to)
     db.session.add(new_pdf)
     db.session.commit()
+
+    print(f"DEBUG: PDF saved at {filepath}")
 
     return jsonify({'message': 'File uploaded successfully'})
 
