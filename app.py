@@ -88,7 +88,6 @@ def upload_pdf():
         print("ERROR: Unauthorized user attempted upload")
         return jsonify({'error': 'Unauthorized'}), 403
 
-    # Check for missing fields
     if 'file' not in request.files:
         print("ERROR: No file uploaded")
         return jsonify({'error': 'No file uploaded'}), 422
@@ -100,9 +99,8 @@ def upload_pdf():
     assigned_to = request.form['assigned_to']
 
     print(f"DEBUG: File received - {file.filename}")
-    print(f"DEBUG: Assigned to (RAW) - {assigned_to}")
+    print(f"DEBUG: Assigned to (RAW) - {assigned_to} (Type: {type(assigned_to)})")
 
-    # Ensure assigned_to is a valid string representation of an integer
     if not assigned_to.isdigit():
         print("ERROR: assigned_to is not a valid integer string")
         return jsonify({'error': 'Invalid assigned_to value'}), 422
