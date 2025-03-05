@@ -187,6 +187,20 @@ def serve_pdf(filename):
     print(f"DEBUG: Serving PDF -> {pdf_path}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
+import os
+
+@app.route('/list_files', methods=['GET'])
+def list_files():
+    """ Debug route to list uploaded files """
+    upload_folder = app.config['UPLOAD_FOLDER']
+    
+    if not os.path.exists(upload_folder):
+        return jsonify({'error': 'Upload folder does not exist'}), 500
+
+    files = os.listdir(upload_folder)
+    return jsonify({'files': files})
+
+
 
 
 
