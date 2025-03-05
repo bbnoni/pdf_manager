@@ -171,8 +171,13 @@ def mark_as_viewed(pdf_id):
 @app.route('/get_agents', methods=['GET'])
 @jwt_required()
 def get_agents():
-    agents = User.query.filter_by(role='agent').all()
-    return jsonify([{"id": agent.id, "username": agent.username} for agent in agents])
+    try:
+        agents = User.query.filter_by(role='agent').all()
+        return jsonify([{"id": agent.id, "username": agent.username} for agent in agents])
+    except Exception as e:
+        print(f"ERROR: Failed to fetch agents - {str(e)}")
+        return jsonify({"error": "Failed to fetch agents"}), 500
+
 
 
 # Run the app
