@@ -165,10 +165,13 @@ def get_pdfs():
     pdfs = PDF.query.filter_by(assigned_to=user_identity['id']).all()
     return jsonify([{'id': p.id, 'filename': p.filename, 'url': f"/serve_pdf/{p.filename}", 'viewed': p.viewed} for p in pdfs])
 
+from flask import Flask, request, jsonify, send_from_directory
+import os
+
 @app.route('/serve_pdf/<filename>', methods=['GET'])
-@jwt_required()
 def serve_pdf(filename):
-    """ Serve uploaded PDFs securely """
+    """ Serve uploaded PDFs securely for viewing and downloading """
+
     pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
     print(f"DEBUG: Checking PDF file -> {pdf_path}")
@@ -178,7 +181,8 @@ def serve_pdf(filename):
         return jsonify({'error': 'File not found'}), 404
 
     print(f"DEBUG: Serving PDF -> {filename}")
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)  # 🔹 Enables downloading
+
 
 
 @app.route('/mark_as_viewed/<int:pdf_id>', methods=['POST'])
