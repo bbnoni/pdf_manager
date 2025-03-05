@@ -81,13 +81,13 @@ def upload_pdf():
     
     print("DEBUG: Upload request received")
     print(f"DEBUG: JWT Identity -> {user}")
-    print(f"DEBUG: Request Headers -> {request.headers}")  # Log headers to debug missing token
+    print(f"DEBUG: Request Headers -> {request.headers}")
 
     if user['role'] != 'manager':
         print("ERROR: Unauthorized user attempted upload")
         return jsonify({'error': 'Unauthorized'}), 403
 
-    # Check if file and assigned_to are present
+    # Check for missing fields
     if 'file' not in request.files:
         print("ERROR: No file uploaded")
         return jsonify({'error': 'No file uploaded'}), 422
@@ -121,6 +121,7 @@ def upload_pdf():
     db.session.commit()
 
     return jsonify({'message': 'File uploaded successfully'})
+
 
 @app.route('/get_pdfs', methods=['GET'])
 @jwt_required()
