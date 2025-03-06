@@ -75,16 +75,17 @@ def upload_commissions():
     if not filename.endswith(('.csv', '.xlsx')):
         return jsonify({"error": "Invalid file format. Only CSV and Excel allowed"}), 400
 
-    # Save file temporarily
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(file_path)
 
     try:
+        # 🔹 Check if the file is readable
+        print(f"✅ Reading file: {filename}")
         df = pd.read_csv(file_path) if filename.endswith('.csv') else pd.read_excel(file_path)
 
-        # Check required columns
         required_columns = {"First Name", "Last Name", "Phone number", "Commission"}
         if not required_columns.issubset(df.columns):
+            print(f"❌ ERROR: Missing required columns. Found columns: {df.columns}")
             return jsonify({"error": "Invalid file format. Missing required columns."}), 400
 
         new_commissions = []
@@ -94,11 +95,15 @@ def upload_commissions():
             phone_number = str(row["Phone number"]).strip()
             amount = float(row["Commission"])
 
-            # Check if agent exists
+            # 🔹 Debug: Check each row
+            print(f"Processing Agent: {first_name} {last_name}, Phone: {phone_number}, Commission: {amount}")
+
             agent = User.query.filter_by(phone_number=phone_number).first()
 
             if not agent:
-                # Create new agent with default password
+                # 🔹 Log missing agent
+                print(f"❌ Agent with phone {phone_number} NOT FOUND! Creating a new agent.")
+
                 default_password = bcrypt.generate_password_hash("default123").decode('utf-8')
                 new_agent = User(
                     username=f"{first_name.lower()}.{last_name.lower()}",
@@ -107,10 +112,12 @@ def upload_commissions():
                     phone_number=phone_number
                 )
                 db.session.add(new_agent)
-                db.session.commit()  # Commit immediately to get agent.id
-                agent = new_agent  # Assign the new agent
+                db.session.commit()  # Save agent first
+                agent = new_agent  # Assign new agent
 
-            # Add commission entry
+            # 🔹 Log commission assignment
+            print(f"✅ Assigning Commission: Agent ID: {agent.id}, Amount: {amount}")
+
             new_commissions.append(
                 Commission(agent_id=agent.id, phone_number=phone_number, amount=amount)
             )
@@ -118,11 +125,14 @@ def upload_commissions():
         if new_commissions:
             db.session.bulk_save_objects(new_commissions)
             db.session.commit()
+            print("✅ Commissions Successfully Inserted!")
 
         return jsonify({"message": "Commissions uploaded successfully! Agents auto-created if not found."})
 
     except Exception as e:
+        print(f"❌ ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/get_commissions', methods=['GET'])
 @jwt_required()
