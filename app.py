@@ -61,7 +61,7 @@ with app.app_context():
 @app.route('/upload_commissions', methods=['POST'])
 @jwt_required()
 def upload_commissions():
-    """ Uploads a CSV/XLSX file and assigns commissions to agents based on phone number. """
+    """ Uploads an Excel/CSV file and assigns commissions. If an agent does not exist, they are added. """
     user_identity = json.loads(get_jwt_identity())
     if user_identity['role'] != 'manager':
         return jsonify({'error': 'Unauthorized'}), 403
@@ -89,20 +89,37 @@ def upload_commissions():
 
         new_commissions = []
         for _, row in df.iterrows():
+            first_name = row["First Name"].strip()
+            last_name = row["Last Name"].strip()
             phone_number = str(row["Phone number"]).strip()
             amount = float(row["Commission"])
 
+            # Check if agent exists
             agent = User.query.filter_by(phone_number=phone_number).first()
-            if agent:
-                new_commissions.append(
-                    Commission(agent_id=agent.id, phone_number=phone_number, amount=amount)
+
+            if not agent:
+                # Create new agent with default password
+                default_password = bcrypt.generate_password_hash("default123").decode('utf-8')
+                new_agent = User(
+                    username=f"{first_name.lower()}.{last_name.lower()}",
+                    password_hash=default_password,
+                    role="agent",
+                    phone_number=phone_number
                 )
+                db.session.add(new_agent)
+                db.session.commit()  # Commit immediately to get agent.id
+                agent = new_agent  # Assign the new agent
+
+            # Add commission entry
+            new_commissions.append(
+                Commission(agent_id=agent.id, phone_number=phone_number, amount=amount)
+            )
 
         if new_commissions:
             db.session.bulk_save_objects(new_commissions)
             db.session.commit()
 
-        return jsonify({"message": "Commissions uploaded successfully!"})
+        return jsonify({"message": "Commissions uploaded successfully! Agents auto-created if not found."})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -122,7 +139,7 @@ def get_commissions():
         {"date": c.date.strftime('%Y-%m-%d'), "amount": c.amount} for c in commissions
     ])
 
-# Existing endpoints remain unchanged
+# Authentication
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
