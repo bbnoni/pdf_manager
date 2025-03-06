@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 import os
 import json
 import pandas as pd
-from datetime import date, datetime
+from datetime import date
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS
@@ -54,7 +54,6 @@ class Commission(db.Model):
     phone_number = db.Column(db.String(20), nullable=False, index=True)
     amount = db.Column(db.Float, nullable=False)
     date = db.Column(db.Date, default=date.today)
-    week_label = db.Column(db.String(50), nullable=False)  # ✅ NEW: Week label stored in the DB
 
 with app.app_context():
     db.create_all()
@@ -62,18 +61,15 @@ with app.app_context():
 @app.route('/upload_commissions', methods=['POST'])
 @jwt_required()
 def upload_commissions():
-    """ Uploads an Excel/CSV file and assigns commissions with correct week labels. """
+    """ Uploads an Excel/CSV file and assigns commissions. If an agent does not exist, they are added. """
     user_identity = json.loads(get_jwt_identity())
     if user_identity['role'] != 'manager':
         return jsonify({'error': 'Unauthorized'}), 403
 
-    if 'file' not in request.files or 'start_date' not in request.form or 'end_date' not in request.form:
-        return jsonify({"error": "File and date range are required."}), 400
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files['file']
-    start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
-    end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
-
     filename = secure_filename(file.filename)
 
     if not filename.endswith(('.csv', '.xlsx')):
@@ -83,62 +79,96 @@ def upload_commissions():
     file.save(file_path)
 
     try:
+        # 🔹 Check if the file is readable
+        print(f"✅ Reading file: {filename}")
         df = pd.read_csv(file_path) if filename.endswith('.csv') else pd.read_excel(file_path)
 
         required_columns = {"First Name", "Last Name", "Phone number", "Commission"}
         if not required_columns.issubset(df.columns):
+            print(f"❌ ERROR: Missing required columns. Found columns: {df.columns}")
             return jsonify({"error": "Invalid file format. Missing required columns."}), 400
 
         new_commissions = []
         for _, row in df.iterrows():
+            first_name = row["First Name"].strip()
+            last_name = row["Last Name"].strip()
             phone_number = str(row["Phone number"]).strip()
             amount = float(row["Commission"])
+
+            # 🔹 Debug: Check each row
+            print(f"Processing Agent: {first_name} {last_name}, Phone: {phone_number}, Commission: {amount}")
+
             agent = User.query.filter_by(phone_number=phone_number).first()
 
             if not agent:
-                return jsonify({"error": f"Agent with phone {phone_number} not found."}), 404
+                # 🔹 Log missing agent
+                print(f"❌ Agent with phone {phone_number} NOT FOUND! Creating a new agent.")
 
-            # ✅ Calculate correct week label
-            def calculate_week_label(date):
-                week_number = (date.day - 1) // 7 + 1
-                return f"{date.strftime('%B')} Week {week_number}"
+                default_password = bcrypt.generate_password_hash("default123").decode('utf-8')
+                new_agent = User(
+                    username=f"{first_name.lower()}.{last_name.lower()}",
+                    password_hash=default_password,
+                    role="agent",
+                    phone_number=phone_number
+                )
+                db.session.add(new_agent)
+                db.session.commit()  # Save agent first
+                agent = new_agent  # Assign new agent
 
-            week_label = calculate_week_label(start_date)
+            # 🔹 Log commission assignment
+            print(f"✅ Assigning Commission: Agent ID: {agent.id}, Amount: {amount}")
 
             new_commissions.append(
-                Commission(agent_id=agent.id, phone_number=phone_number, amount=amount, date=start_date, week_label=week_label)
+                Commission(agent_id=agent.id, phone_number=phone_number, amount=amount)
             )
 
         if new_commissions:
             db.session.bulk_save_objects(new_commissions)
             db.session.commit()
+            print("✅ Commissions Successfully Inserted!")
 
-        return jsonify({"message": f"Commissions uploaded successfully for {week_label}!"})
+        return jsonify({"message": "Commissions uploaded successfully! Agents auto-created if not found."})
 
     except Exception as e:
+        print(f"❌ ERROR: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+from datetime import datetime
 
 @app.route('/get_commissions', methods=['GET'])
 @jwt_required()
 def get_commissions():
-    """ Fetches commissions assigned to the logged-in agent with correct week labels. """
+    """ Fetches commissions assigned to the logged-in agent with week labels. """
     user_identity = json.loads(get_jwt_identity())
     agent = User.query.filter_by(id=user_identity['id']).first()
 
     if not agent:
         return jsonify({"error": "Agent not found"}), 404
 
+    # Debugging log to verify agent ID and phone number
+    print(f"Fetching commissions for Agent ID: {agent.id}, Phone: {agent.phone_number}")
+
+    # Fetch commissions based on phone number
     commissions = Commission.query.filter_by(phone_number=agent.phone_number).all()
+
+    if not commissions:
+        print("No commissions found!")
+
+    def calculate_week_label(date):
+        """ Determines which week of the month a date falls into. """
+        week_number = (date.day - 1) // 7 + 1
+        return f"{date.strftime('%B')} Week {week_number}"
 
     return jsonify([
         {
             "date": c.date.strftime('%Y-%m-%d'),
             "amount": c.amount,
-            "week_label": c.week_label  # ✅ Ensure correct week label is sent to frontend
+            "week_label": calculate_week_label(c.date)  # Calculate the week
         }
         for c in commissions
     ])
+
 
 
 # Authentication
@@ -173,6 +203,39 @@ def register():
 
     return jsonify({'message': 'User registered successfully'}), 201
 
+@app.route('/get_agents', methods=['GET'])
+@jwt_required()
+def get_agents():
+    user_identity = json.loads(get_jwt_identity())
+
+    if user_identity["role"] != "manager":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    agents = User.query.filter_by(role='agent').all()
+    return jsonify([{"id": agent.id, "username": agent.username, "phone_number": agent.phone_number} for agent in agents])
+
+@app.route('/serve_pdf/<filename>', methods=['GET'])
+@jwt_required()
+def serve_pdf(filename):
+    pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    if not os.path.exists(pdf_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+
+@app.route('/mark_as_viewed/<int:pdf_id>', methods=['POST'])
+@jwt_required()
+def mark_as_viewed(pdf_id):
+    user_identity = json.loads(get_jwt_identity())
+    pdf = PDF.query.filter_by(id=pdf_id, assigned_to=user_identity['id']).first()
+
+    if pdf:
+        pdf.viewed = True
+        db.session.commit()
+        return jsonify({'message': 'Marked as viewed'})
+
+    return jsonify({'error': 'PDF not found'}), 404
 
 if __name__ == '__main__':
     with app.app_context():
