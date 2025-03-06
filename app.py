@@ -134,10 +134,12 @@ def upload_commissions():
         return jsonify({"error": str(e)}), 500
 
 
+from datetime import datetime
+
 @app.route('/get_commissions', methods=['GET'])
 @jwt_required()
 def get_commissions():
-    """ Fetches commissions assigned to the logged-in agent. """
+    """ Fetches commissions assigned to the logged-in agent with week labels. """
     user_identity = json.loads(get_jwt_identity())
     agent = User.query.filter_by(id=user_identity['id']).first()
 
@@ -153,9 +155,20 @@ def get_commissions():
     if not commissions:
         print("No commissions found!")
 
+    def calculate_week_label(date):
+        """ Determines which week of the month a date falls into. """
+        week_number = (date.day - 1) // 7 + 1
+        return f"{date.strftime('%B')} Week {week_number}"
+
     return jsonify([
-        {"date": c.date.strftime('%Y-%m-%d'), "amount": c.amount} for c in commissions
+        {
+            "date": c.date.strftime('%Y-%m-%d'),
+            "amount": c.amount,
+            "week_label": calculate_week_label(c.date)  # Calculate the week
+        }
+        for c in commissions
     ])
+
 
 
 # Authentication
