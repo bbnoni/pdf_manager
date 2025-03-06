@@ -134,10 +134,19 @@ def get_commissions():
     if not agent:
         return jsonify({"error": "Agent not found"}), 404
 
+    # Debugging log to verify agent ID and phone number
+    print(f"Fetching commissions for Agent ID: {agent.id}, Phone: {agent.phone_number}")
+
+    # Fetch commissions based on phone number
     commissions = Commission.query.filter_by(phone_number=agent.phone_number).all()
+
+    if not commissions:
+        print("No commissions found!")
+
     return jsonify([
         {"date": c.date.strftime('%Y-%m-%d'), "amount": c.amount} for c in commissions
     ])
+
 
 # Authentication
 @app.route('/login', methods=['POST'])
