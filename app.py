@@ -17,7 +17,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL  # PostgreSQL on Render
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY", "your_fallback_secret_key")
 app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), "uploads")
@@ -36,7 +36,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(10), nullable=False)  # "manager" or "agent"
-    phone_number = db.Column(db.String(20), unique=True, nullable=False)  # Added phone number field
+    phone_number = db.Column(db.String(20), unique=True, nullable=False, index=True)  # Indexed for faster lookup
 
 class PDF(db.Model):
     __tablename__ = "pdfs"
@@ -51,11 +51,12 @@ class Commission(db.Model):
     __tablename__ = "commissions"
     id = db.Column(db.Integer, primary_key=True)
     agent_id = db.Column(db.Integer, db.ForeignKey('user_table.id'), nullable=False)
-    phone_number = db.Column(db.String(20), nullable=False)
+    phone_number = db.Column(db.String(20), nullable=False, index=True)
     amount = db.Column(db.Float, nullable=False)
     date = db.Column(db.Date, default=date.today)
 
-db.create_all()
+with app.app_context():
+    db.create_all()
 
 @app.route('/upload_commissions', methods=['POST'])
 @jwt_required()
@@ -71,7 +72,7 @@ def upload_commissions():
     file = request.files['file']
     filename = secure_filename(file.filename)
 
-    if not filename.endswith('.csv') and not filename.endswith('.xlsx'):
+    if not filename.endswith(('.csv', '.xlsx')):
         return jsonify({"error": "Invalid file format. Only CSV and Excel allowed"}), 400
 
     # Save file temporarily
@@ -79,31 +80,28 @@ def upload_commissions():
     file.save(file_path)
 
     try:
-        if filename.endswith('.csv'):
-            df = pd.read_csv(file_path)
-        else:
-            df = pd.read_excel(file_path)
+        df = pd.read_csv(file_path) if filename.endswith('.csv') else pd.read_excel(file_path)
 
         # Check required columns
         required_columns = {"First Name", "Last Name", "Phone number", "Commission"}
         if not required_columns.issubset(df.columns):
             return jsonify({"error": "Invalid file format. Missing required columns."}), 400
 
-        # Process each row
+        new_commissions = []
         for _, row in df.iterrows():
             phone_number = str(row["Phone number"]).strip()
             amount = float(row["Commission"])
 
             agent = User.query.filter_by(phone_number=phone_number).first()
             if agent:
-                new_commission = Commission(
-                    agent_id=agent.id,
-                    phone_number=phone_number,
-                    amount=amount
+                new_commissions.append(
+                    Commission(agent_id=agent.id, phone_number=phone_number, amount=amount)
                 )
-                db.session.add(new_commission)
 
-        db.session.commit()
+        if new_commissions:
+            db.session.bulk_save_objects(new_commissions)
+            db.session.commit()
+
         return jsonify({"message": "Commissions uploaded successfully!"})
 
     except Exception as e:
@@ -121,10 +119,7 @@ def get_commissions():
 
     commissions = Commission.query.filter_by(phone_number=agent.phone_number).all()
     return jsonify([
-        {
-            "date": c.date.strftime('%Y-%m-%d'),
-            "amount": c.amount
-        } for c in commissions
+        {"date": c.date.strftime('%Y-%m-%d'), "amount": c.amount} for c in commissions
     ])
 
 # Existing endpoints remain unchanged
@@ -145,20 +140,15 @@ def login():
 def register():
     """ Register new users (for testing purposes) """
     data = request.json
-    if not data or 'username' not in data or 'password' not in data or 'role' not in data or 'phone_number' not in data:
+    if not all(key in data for key in ['username', 'password', 'role', 'phone_number']):
         return jsonify({'error': 'Missing required fields'}), 400
 
-    existing_user = User.query.filter_by(username=data['username']).first()
-    if existing_user:
+    if User.query.filter_by(username=data['username']).first():
         return jsonify({'error': 'Username already exists'}), 409
 
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-    new_user = User(
-        username=data['username'],
-        password_hash=hashed_password,
-        role=data['role'],
-        phone_number=data['phone_number']
-    )
+    new_user = User(username=data['username'], password_hash=hashed_password, role=data['role'], phone_number=data['phone_number'])
+    
     db.session.add(new_user)
     db.session.commit()
 
