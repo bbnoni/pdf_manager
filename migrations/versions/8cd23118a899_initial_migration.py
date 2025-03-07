@@ -27,8 +27,8 @@ def upgrade():
         batch_op.create_foreign_key(None, 'user_table', ['assigned_to'], ['id'])
 
     with op.batch_alter_table('user_table', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('first_name', sa.String(length=80), nullable=False))
-        batch_op.add_column(sa.Column('last_name', sa.String(length=80), nullable=False))
+        batch_op.add_column(sa.Column('first_name', sa.String(length=80), nullable=False, server_default='Default'))
+        batch_op.add_column(sa.Column('last_name', sa.String(length=80), nullable=False, server_default='Default'))
         batch_op.alter_column('password_hash',
                existing_type=sa.TEXT(),
                type_=sa.String(length=255),
