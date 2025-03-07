@@ -204,12 +204,16 @@ def register():
     if User.query.filter_by(phone_number=data['phone_number']).first():
         return jsonify({'error': 'Phone number already registered'}), 409
 
+    # 🔹 Generate a unique username
+    username = f"{data['first_name'].lower()}.{data['last_name'].lower()}"
+
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
     new_agent = User(
-        first_name=data['first_name'],
-        last_name=data['last_name'],
-        phone_number=data['phone_number'],
+        first_name=data['first_name'].strip(),
+        last_name=data['last_name'].strip(),
+        phone_number=data['phone_number'].strip(),
         password_hash=hashed_password,
+        username=username,  # 🔹 Fix: Assign username automatically
         role="agent"
     )
 
@@ -218,8 +222,6 @@ def register():
 
     return jsonify({'message': 'Agent registered successfully'}), 201
 
-
-    return jsonify({'message': 'User registered successfully'}), 201
 
 @app.route('/get_agents', methods=['GET'])
 @jwt_required()
