@@ -33,9 +33,12 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 class User(db.Model):
     __tablename__ = "user_table"
     id = db.Column(db.Integer, primary_key=True)
+    first_name = db.Column(db.String(80), nullable=False)  # Added
+    last_name = db.Column(db.String(80), nullable=False)   # Added
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(10), nullable=False)  # "manager" or "agent"
+    #role = db.Column(db.String(10), nullable=False)  # "manager" or "agent"
+    role = db.Column(db.String(10), nullable=False, default="agent")  # Default role is agent
     phone_number = db.Column(db.String(20), unique=True, nullable=False, index=True)  # Indexed for faster lookup
 
 class PDF(db.Model):
@@ -172,32 +175,45 @@ def get_commissions():
 # Authentication
 @app.route('/login', methods=['POST'])
 def login():
+    """ Login using phone number and password. """
     data = request.json
-    if not data or 'username' not in data or 'password' not in data:
+    if not data or 'phone_number' not in data or 'password' not in data:
         return jsonify({'error': 'Invalid request'}), 400
 
-    user = User.query.filter_by(username=data['username']).first()
+    user = User.query.filter_by(phone_number=data['phone_number']).first()
     if user and bcrypt.check_password_hash(user.password_hash, data['password']):
         token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
-        return jsonify({'token': token, 'role': user.role})
+        return jsonify({'token': token, 'role': user.role, 'first_name': user.first_name})
 
     return jsonify({'error': 'Invalid credentials'}), 401
 
+
 @app.route('/register', methods=['POST'])
 def register():
-    """ Register new users (for testing purposes) """
+    """ Register a new agent using first name, last name, phone number, and password. """
     data = request.json
-    if not all(key in data for key in ['username', 'password', 'role', 'phone_number']):
+    required_fields = ['first_name', 'last_name', 'phone_number', 'password']
+
+    if not all(field in data for field in required_fields):
         return jsonify({'error': 'Missing required fields'}), 400
 
-    if User.query.filter_by(username=data['username']).first():
-        return jsonify({'error': 'Username already exists'}), 409
+    if User.query.filter_by(phone_number=data['phone_number']).first():
+        return jsonify({'error': 'Phone number already registered'}), 409
 
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-    new_user = User(username=data['username'], password_hash=hashed_password, role=data['role'], phone_number=data['phone_number'])
-    
-    db.session.add(new_user)
+    new_agent = User(
+        first_name=data['first_name'],
+        last_name=data['last_name'],
+        phone_number=data['phone_number'],
+        password_hash=hashed_password,
+        role="agent"
+    )
+
+    db.session.add(new_agent)
     db.session.commit()
+
+    return jsonify({'message': 'Agent registered successfully'}), 201
+
 
     return jsonify({'message': 'User registered successfully'}), 201
 
