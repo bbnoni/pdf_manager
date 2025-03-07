@@ -8,6 +8,7 @@ import os
 import json
 import pandas as pd
 from datetime import date
+from flask_migrate import Migrate  # ✅ Import Flask-Migrate
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS
@@ -23,6 +24,9 @@ app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY", "your_fallback_secret
 app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), "uploads")
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)  # ✅ Initialize Flask-Migrate here
+
+
 jwt = JWTManager(app)
 bcrypt = Bcrypt(app)
 
