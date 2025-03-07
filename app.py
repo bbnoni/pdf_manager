@@ -54,6 +54,7 @@ class Commission(db.Model):
     phone_number = db.Column(db.String(20), nullable=False, index=True)
     amount = db.Column(db.Float, nullable=False)
     date = db.Column(db.Date, default=date.today)
+    commission_period = db.Column(db.String(50), nullable=False)  # 🔹 Added field
 
 with app.app_context():
     db.create_all()
@@ -66,10 +67,11 @@ def upload_commissions():
     if user_identity['role'] != 'manager':
         return jsonify({'error': 'Unauthorized'}), 403
 
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+    if 'file' not in request.files or 'commission_period' not in request.form:
+        return jsonify({"error": "No file uploaded or commission period missing"}), 400
 
     file = request.files['file']
+    commission_period = request.form['commission_period'].strip()  # 🔹 Get manually entered period
     filename = secure_filename(file.filename)
 
     if not filename.endswith(('.csv', '.xlsx')):
@@ -96,7 +98,7 @@ def upload_commissions():
             amount = float(row["Commission"])
 
             # 🔹 Debug: Check each row
-            print(f"Processing Agent: {first_name} {last_name}, Phone: {phone_number}, Commission: {amount}")
+            print(f"Processing Agent: {first_name} {last_name}, Phone: {phone_number}, Commission: {amount}, Period: {commission_period}")
 
             agent = User.query.filter_by(phone_number=phone_number).first()
 
@@ -116,10 +118,10 @@ def upload_commissions():
                 agent = new_agent  # Assign new agent
 
             # 🔹 Log commission assignment
-            print(f"✅ Assigning Commission: Agent ID: {agent.id}, Amount: {amount}")
+            print(f"✅ Assigning Commission: Agent ID: {agent.id}, Amount: {amount}, Period: {commission_period}")
 
             new_commissions.append(
-                Commission(agent_id=agent.id, phone_number=phone_number, amount=amount)
+                Commission(agent_id=agent.id, phone_number=phone_number, amount=amount, commission_period=commission_period)  # 🔹 Store period
             )
 
         if new_commissions:
@@ -134,22 +136,21 @@ def upload_commissions():
         return jsonify({"error": str(e)}), 500
 
 
+
 from datetime import datetime
 
 @app.route('/get_commissions', methods=['GET'])
 @jwt_required()
 def get_commissions():
-    """ Fetches commissions assigned to the logged-in agent with manually entered commission periods. """
+    """ Fetches commissions assigned to the logged-in agent with the manually entered commission period. """
     user_identity = json.loads(get_jwt_identity())
     agent = User.query.filter_by(id=user_identity['id']).first()
 
     if not agent:
         return jsonify({"error": "Agent not found"}), 404
 
-    # Debugging log to verify agent ID and phone number
     print(f"Fetching commissions for Agent ID: {agent.id}, Phone: {agent.phone_number}")
 
-    # Fetch commissions based on phone number
     commissions = Commission.query.filter_by(phone_number=agent.phone_number).all()
 
     if not commissions:
@@ -159,10 +160,11 @@ def get_commissions():
         {
             "date": c.date.strftime('%Y-%m-%d'),
             "amount": c.amount,
-            "commission_period": c.commission_period  # 🔹 Get manually entered period
+            "commission_period": c.commission_period  # 🔹 Now included in the response
         }
         for c in commissions
     ])
+
 
 
 
