@@ -235,6 +235,11 @@ def mark_as_viewed(pdf_id):
 
     return jsonify({'error': 'PDF not found'}), 404
 
+@app.route('/')
+def home():
+    return "PDF Manager API is running!"
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
