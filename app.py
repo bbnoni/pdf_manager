@@ -279,23 +279,24 @@ def mark_as_viewed(pdf_id):
 @app.route('/reset_password', methods=['POST'])
 @jwt_required()
 def reset_password():
-    """ Allows a user to reset their password on first login """
-    data = request.json
+    """ Allows first-time agents to reset their password """
     user_identity = json.loads(get_jwt_identity())
     user = User.query.get(user_identity['id'])
 
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    if 'new_password' not in data or len(data['new_password']) < 6:
-        return jsonify({"error": "Password must be at least 6 characters"}), 400
+    data = request.json
+    if 'new_password' not in data or len(data['new_password'].strip()) < 6:
+        return jsonify({"error": "New password must be at least 6 characters"}), 400
 
-    # 🔹 Hash and update the new password
-    user.password_hash = bcrypt.generate_password_hash(data['new_password']).decode('utf-8')
-    user.first_login = False  # 🔹 Mark as completed reset
+    # 🔹 Update password and remove first_login flag
+    user.password_hash = bcrypt.generate_password_hash(data['new_password'].strip()).decode('utf-8')
+    user.first_login = False  # 🔹 Now they can log in normally
     db.session.commit()
 
-    return jsonify({"message": "Password successfully reset. You can now log in."})
+    return jsonify({"message": "Password updated successfully. You can now log in."}), 200
+
 
 
 @app.route('/')
