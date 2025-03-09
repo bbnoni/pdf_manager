@@ -250,11 +250,25 @@ def register():
 def get_agents():
     user_identity = json.loads(get_jwt_identity())
 
-    if user_identity["role"] != "manager":
+    if user_identity.get("role") != "manager":
         return jsonify({"error": "Unauthorized"}), 403
 
     agents = User.query.filter_by(role='agent').all()
-    return jsonify([{"id": agent.id, "username": agent.username, "phone_number": agent.phone_number} for agent in agents])
+
+    if not agents:
+        return jsonify({"message": "No agents found."}), 404  # Better response if empty
+
+    return jsonify([
+        {
+            "id": agent.id,
+            "username": agent.username,
+            "first_name": agent.first_name,  # 🔹 Add First Name
+            "last_name": agent.last_name,  # 🔹 Add Last Name
+            "phone_number": agent.phone_number
+        }
+        for agent in agents
+    ])
+
 
 @app.route('/serve_pdf/<filename>', methods=['GET'])
 @jwt_required()
