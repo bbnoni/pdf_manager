@@ -192,21 +192,24 @@ def login():
         return jsonify({'error': 'Invalid request'}), 400
 
     user = User.query.filter_by(phone_number=data['phone_number']).first()
-    
-    if user and bcrypt.check_password_hash(user.password_hash, data['password']):
 
-        # 🔹 Check if the user is required to reset their password on first login
+    if user and bcrypt.check_password_hash(user.password_hash, data['password']):
+        # 🔹 Generate token first
+        token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
+
+        # 🔹 Check if user must reset password
         if user.first_login:
             return jsonify({
                 'message': 'Password reset required',
-                'reset_required': True,  # 🔹 Frontend should handle redirection
+                'reset_required': True,
+                'token': token  # 🔹 Ensure token is included for reset
             }), 403  # Forbidden until password is reset
 
-        # 🔹 Generate token and proceed with normal login
-        token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
+        # 🔹 Return normal login response
         return jsonify({'token': token, 'role': user.role, 'first_name': user.first_name})
 
     return jsonify({'error': 'Invalid credentials'}), 401
+
 
 
 
