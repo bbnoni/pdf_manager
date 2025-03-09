@@ -280,22 +280,30 @@ def mark_as_viewed(pdf_id):
 @jwt_required()
 def reset_password():
     """ Allows first-time agents to reset their password """
-    user_identity = json.loads(get_jwt_identity())
-    user = User.query.get(user_identity['id'])
+    try:
+        user_identity = json.loads(get_jwt_identity())
+        user = User.query.get(user_identity['id'])
 
-    if not user:
-        return jsonify({"error": "User not found"}), 404
+        if not user:
+            return jsonify({"error": "User not found"}), 404
 
-    data = request.json
-    if 'new_password' not in data or len(data['new_password'].strip()) < 6:
-        return jsonify({"error": "New password must be at least 6 characters"}), 400
+        data = request.json
+        new_password = data.get('new_password', '').strip()
 
-    # 🔹 Update password and remove first_login flag
-    user.password_hash = bcrypt.generate_password_hash(data['new_password'].strip()).decode('utf-8')
-    user.first_login = False  # 🔹 Now they can log in normally
-    db.session.commit()
+        if not new_password or len(new_password) < 6:
+            return jsonify({"error": "New password must be at least 6 characters"}), 400
 
-    return jsonify({"message": "Password updated successfully. You can now log in."}), 200
+        # 🔹 Update password and remove first_login flag
+        user.password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        user.first_login = False  # ✅ Mark first login as complete
+        db.session.commit()
+
+        return jsonify({"message": "Password updated successfully. You can now log in."}), 200
+    
+    except Exception as e:
+        print(f"❌ Reset Password Error: {e}")  # Log error for debugging
+        return jsonify({"error": "Something went wrong. Please try again."}), 500
+
 
 
 
