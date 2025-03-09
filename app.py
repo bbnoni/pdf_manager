@@ -290,10 +290,11 @@ def get_payments(user_id):
         {
             "amount": c.amount,
             "date": c.date.strftime('%Y-%m-%d'),
-            "commission_period": c.commission_period
+            "commission_period": c.commission_period  # 🔹 Make sure this is included
         }
         for c in payments
     ])
+
 
 
 
