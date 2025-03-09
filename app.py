@@ -210,6 +210,7 @@ def login():
 
 
 
+
 @app.route('/register', methods=['POST'])
 def register():
     """ Register a new agent using first name, last name, phone number, and password. """
