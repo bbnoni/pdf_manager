@@ -270,6 +270,33 @@ def get_agents():
     ])
 
 
+@app.route('/get_payments/<int:user_id>', methods=['GET'])
+@jwt_required()
+def get_payments(user_id):
+    """ Fetches all commission payments for a specific agent """
+    user_identity = json.loads(get_jwt_identity())
+
+    # Only managers should be able to view payments
+    if user_identity["role"] != "manager":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    # Fetch payments for the given user_id
+    payments = Commission.query.filter_by(agent_id=user_id).all()
+
+    if not payments:
+        return jsonify([])  # Return empty list if no payments found
+
+    return jsonify([
+        {
+            "amount": c.amount,
+            "date": c.date.strftime('%Y-%m-%d'),
+            "commission_period": c.commission_period
+        }
+        for c in payments
+    ])
+
+
+
 @app.route('/serve_pdf/<filename>', methods=['GET'])
 @jwt_required()
 def serve_pdf(filename):
