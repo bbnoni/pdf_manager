@@ -100,8 +100,8 @@ def upload_commissions():
 
         new_commissions = []
         for _, row in df.iterrows():
-            first_name = row["First Name"].strip()
-            last_name = row["Last Name"].strip()
+            first_name = row["First Name"].strip() if pd.notna(row["First Name"]) else "Unknown"
+            last_name = row["Last Name"].strip() if pd.notna(row["Last Name"]) else "User"
             phone_number = str(row["Phone number"]).strip()
             amount = float(row["Commission"])
 
@@ -115,11 +115,16 @@ def upload_commissions():
                 print(f"❌ Agent with phone {phone_number} NOT FOUND! Creating a new agent.")
 
                 default_password = bcrypt.generate_password_hash("default123").decode('utf-8')
+                username = f"{first_name.lower()}.{last_name.lower()}".replace(" ", "_")  # Prevent empty username
+
                 new_agent = User(
-                    username=f"{first_name.lower()}.{last_name.lower()}",
+                    first_name=first_name,  # ✅ Ensure first_name is never None
+                    last_name=last_name,  # ✅ Ensure last_name is never None
+                    username=username,  # ✅ Ensure username is unique
                     password_hash=default_password,
                     role="agent",
-                    phone_number=phone_number
+                    phone_number=phone_number,
+                    first_login=True  # 🔹 Mark as first login (forces reset)
                 )
                 db.session.add(new_agent)
                 db.session.commit()  # Save agent first
@@ -142,6 +147,7 @@ def upload_commissions():
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
