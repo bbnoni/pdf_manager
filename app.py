@@ -44,6 +44,7 @@ class User(db.Model):
     #role = db.Column(db.String(10), nullable=False)  # "manager" or "agent"
     role = db.Column(db.String(10), nullable=False, default="agent")  # Default role is agent
     phone_number = db.Column(db.String(20), unique=True, nullable=False, index=True)  # Indexed for faster lookup
+    first_login = db.Column(db.Boolean, default=True)
 
 class PDF(db.Model):
     __tablename__ = "pdfs"
@@ -185,11 +186,22 @@ def login():
         return jsonify({'error': 'Invalid request'}), 400
 
     user = User.query.filter_by(phone_number=data['phone_number']).first()
+    
     if user and bcrypt.check_password_hash(user.password_hash, data['password']):
+
+        # 🔹 Check if the user is required to reset their password on first login
+        if user.first_login:
+            return jsonify({
+                'message': 'Password reset required',
+                'reset_required': True,  # 🔹 Frontend should handle redirection
+            }), 403  # Forbidden until password is reset
+
+        # 🔹 Generate token and proceed with normal login
         token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
         return jsonify({'token': token, 'role': user.role, 'first_name': user.first_name})
 
     return jsonify({'error': 'Invalid credentials'}), 401
+
 
 
 @app.route('/register', methods=['POST'])
@@ -256,6 +268,28 @@ def mark_as_viewed(pdf_id):
         return jsonify({'message': 'Marked as viewed'})
 
     return jsonify({'error': 'PDF not found'}), 404
+
+@app.route('/reset_password', methods=['POST'])
+@jwt_required()
+def reset_password():
+    """ Allows a user to reset their password on first login """
+    data = request.json
+    user_identity = json.loads(get_jwt_identity())
+    user = User.query.get(user_identity['id'])
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    if 'new_password' not in data or len(data['new_password']) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+
+    # 🔹 Hash and update the new password
+    user.password_hash = bcrypt.generate_password_hash(data['new_password']).decode('utf-8')
+    user.first_login = False  # 🔹 Mark as completed reset
+    db.session.commit()
+
+    return jsonify({"message": "Password successfully reset. You can now log in."})
+
 
 @app.route('/')
 def home():
