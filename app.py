@@ -78,6 +78,8 @@ class Commission(db.Model):
 with app.app_context():
     db.create_all()
 
+
+
 @app.route('/upload_commissions', methods=['POST'])
 @jwt_required()
 def upload_commissions():
@@ -90,7 +92,7 @@ def upload_commissions():
         return jsonify({"error": "No file uploaded or commission period missing"}), 400
 
     file = request.files['file']
-    commission_period = request.form['commission_period'].strip()  
+    commission_period = request.form['commission_period'].strip()
     filename = secure_filename(file.filename)
 
     if not filename.endswith(('.csv', '.xlsx')):
@@ -101,20 +103,30 @@ def upload_commissions():
 
     try:
         print(f"✅ Reading file: {filename}")
+        
+        # ✅ Read Excel or CSV File
         df = pd.read_csv(file_path) if filename.endswith('.csv') else pd.read_excel(file_path)
+        
+        # ✅ Debug: Print detected column names
+        print(f"🔍 Detected Columns in File: {df.columns.tolist()}")
 
+        # ✅ Updated Required Columns - Ensure exact match
         required_columns = {
-            "First Name", "Last Name", "Phone number", "Commission", 
+            "First Name", "Last Name", "Phone number", "Commission",  
             "cashin-total number transactions", "cashin-total value", 
+            "cashin-total numberVALID", "cashin-total valueVALID",
             "cashin-total tax on VALID", "cashin-payout commission",
             "cashout-total number transactions", "cashout-total value",
+            "cashout-total numberVALID", "cashout-total valueVALID",
             "cashout-total tax on VALID", "cashout-payout commission",
             "total commissions due"
         }
-        
-        if not required_columns.issubset(df.columns):
-            print(f"❌ ERROR: Missing required columns. Found columns: {df.columns}")
-            return jsonify({"error": "Invalid file format. Missing required columns."}), 400
+
+        # ✅ Check for missing columns
+        missing_columns = required_columns - set(df.columns)
+        if missing_columns:
+            print(f"❌ ERROR: Missing required columns: {missing_columns}")
+            return jsonify({"error": f"Invalid file format. Missing columns: {missing_columns}"}), 400
 
         new_commissions = []
         for _, row in df.iterrows():
@@ -146,21 +158,25 @@ def upload_commissions():
 
             print(f"✅ Assigning Commission: Agent ID: {agent.id}, Amount: {amount}, Period: {commission_period}")
 
+            # ✅ Ensuring safe access to optional fields (avoid missing keys)
+            def get_value(column_name):
+                return row[column_name] if column_name in df.columns and pd.notna(row[column_name]) else None
+
             new_commissions.append(
                 Commission(
                     agent_id=agent.id, 
                     phone_number=phone_number, 
                     amount=amount, 
                     commission_period=commission_period,
-                    cashin_total_transactions=row["cashin-total number transactions"],
-                    cashin_total_value=row["cashin-total value"],
-                    cashin_total_tax_on_valid=row["cashin-total tax on VALID"],
-                    cashin_payout_commission=row["cashin-payout commission"],
-                    cashout_total_transactions=row["cashout-total number transactions"],
-                    cashout_total_value=row["cashout-total value"],
-                    cashout_total_tax_on_valid=row["cashout-total tax on VALID"],
-                    cashout_payout_commission=row["cashout-payout commission"],
-                    total_commissions_due=row["total commissions due"]
+                    cashin_total_transactions=get_value("cashin-total number transactions"),
+                    cashin_total_value=get_value("cashin-total value"),
+                    cashin_total_tax_on_valid=get_value("cashin-total tax on VALID"),
+                    cashin_payout_commission=get_value("cashin-payout commission"),
+                    cashout_total_transactions=get_value("cashout-total number transactions"),
+                    cashout_total_value=get_value("cashout-total value"),
+                    cashout_total_tax_on_valid=get_value("cashout-total tax on VALID"),
+                    cashout_payout_commission=get_value("cashout-payout commission"),
+                    total_commissions_due=get_value("total commissions due")
                 )
             )
 
@@ -174,6 +190,7 @@ def upload_commissions():
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 ##
@@ -191,30 +208,38 @@ def get_commissions():
     if not agent:
         return jsonify({"error": "Agent not found"}), 404
 
-    print(f"Fetching commissions for Agent ID: {agent.id}, Phone: {agent.phone_number}")
+    print(f"🔍 Fetching commissions for Agent ID: {agent.id}, Phone: {agent.phone_number}")
 
     commissions = Commission.query.filter_by(phone_number=agent.phone_number).all()
 
     if not commissions:
-        print("No commissions found!")
+        print("⚠️ No commissions found!")
+        return jsonify([])  # Return an empty list instead of nothing
 
-    return jsonify([
+    # ✅ Improved Response Format
+    response_data = [
         {
-            "date": c.date.strftime('%Y-%m-%d'),
-            "amount": c.amount,
-            "commission_period": c.commission_period,
-            "cashin_total_transactions": c.cashin_total_transactions,
-            "cashin_total_value": c.cashin_total_value,
-            "cashin_total_tax_on_valid": c.cashin_total_tax_on_valid,
-            "cashin_payout_commission": c.cashin_payout_commission,
-            "cashout_total_transactions": c.cashout_total_transactions,
-            "cashout_total_value": c.cashout_total_value,
-            "cashout_total_tax_on_valid": c.cashout_total_tax_on_valid,
-            "cashout_payout_commission": c.cashout_payout_commission,
-            "total_commissions_due": c.total_commissions_due
+            "id": c.id,  # 🔹 Include commission ID
+            "phone_number": c.phone_number,  # 🔹 Ensures phone number consistency
+            "date": c.date.strftime('%Y-%m-%d') if c.date else "N/A",
+            "amount": c.amount if c.amount else 0.0,
+            "commission_period": c.commission_period if c.commission_period else "Not Provided",
+            "cashin_total_transactions": getattr(c, "cashin_total_transactions", "N/A"),
+            "cashin_total_value": getattr(c, "cashin_total_value", "N/A"),
+            "cashin_total_tax_on_valid": getattr(c, "cashin_total_tax_on_valid", "N/A"),
+            "cashin_payout_commission": getattr(c, "cashin_payout_commission", "N/A"),
+            "cashout_total_transactions": getattr(c, "cashout_total_transactions", "N/A"),
+            "cashout_total_value": getattr(c, "cashout_total_value", "N/A"),
+            "cashout_total_tax_on_valid": getattr(c, "cashout_total_tax_on_valid", "N/A"),
+            "cashout_payout_commission": getattr(c, "cashout_payout_commission", "N/A"),
+            "total_commissions_due": getattr(c, "total_commissions_due", "N/A"),
         }
         for c in commissions
-    ])
+    ]
+
+    print(f"✅ Found {len(response_data)} commissions for Agent ID: {agent.id}")
+    
+    return jsonify(response_data)
 
 
 
