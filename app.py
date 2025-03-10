@@ -113,11 +113,11 @@ def upload_commissions():
         # ✅ Updated Required Columns - Ensure exact match
         required_columns = {
             "First Name", "Last Name", "Phone number", "Commission",
-            "cashin-total number transactions", "cashin-total value",
-            "cashin-total numberVALID", "cashin-total valueVALID",
+            "cashin-total number transactions", "cashin-total numberVALID",  # ✅ FIXED
+            "cashin-total value", "cashin-total valueVALID",  # ✅ FIXED
             "cashin-total tax on VALID", "cashin-payout commission",
-            "cashout-total number transactions", "cashout-total value",
-            "cashout-total numberVALID", "cashout-total valueVALID",
+            "cashout-total number transactions", "cashout-total numberVALID",  # ✅ FIXED
+            "cashout-total value", "cashout-total valueVALID",  # ✅ FIXED
             "cashout-total tax on VALID", "cashout-payout commission",
             "total commissions due"
         }
@@ -144,6 +144,10 @@ def upload_commissions():
                 counter += 1
 
             return username
+
+        def get_value(row, column_name):
+            """Safely get a value from the row, ensuring no NaN/null issues."""
+            return str(row[column_name]).strip() if column_name in row and pd.notna(row[column_name]) else None
 
         for _, row in df.iterrows():
             first_name = str(row.get("First Name", "Unknown")).strip()
@@ -186,25 +190,26 @@ def upload_commissions():
 
             print(f"✅ Assigning Commission: Agent ID: {agent.id}, Amount: {amount}, Period: {commission_period}")
 
-            # ✅ Ensuring safe access to optional fields (avoid missing keys)
-            def get_value(column_name):
-                return str(row.get(column_name, "")).strip() if column_name in df.columns else None
-
+            # ✅ Inserting All Required Fields, Including Missing Ones
             new_commissions.append(
                 Commission(
                     agent_id=agent.id,
                     phone_number=phone_number,
                     amount=amount,
                     commission_period=commission_period,
-                    cashin_total_transactions=get_value("cashin-total number transactions"),
-                    cashin_total_value=get_value("cashin-total value"),
-                    cashin_total_tax_on_valid=get_value("cashin-total tax on VALID"),
-                    cashin_payout_commission=get_value("cashin-payout commission"),
-                    cashout_total_transactions=get_value("cashout-total number transactions"),
-                    cashout_total_value=get_value("cashout-total value"),
-                    cashout_total_tax_on_valid=get_value("cashout-total tax on VALID"),
-                    cashout_payout_commission=get_value("cashout-payout commission"),
-                    total_commissions_due=get_value("total commissions due")
+                    cashin_total_transactions=get_value(row, "cashin-total number transactions"),
+                    cashin_total_numberVALID=get_value(row, "cashin-total numberVALID"),  # ✅ FIXED
+                    cashin_total_value=get_value(row, "cashin-total value"),
+                    cashin_total_valueVALID=get_value(row, "cashin-total valueVALID"),  # ✅ FIXED
+                    cashin_total_tax_on_valid=get_value(row, "cashin-total tax on VALID"),
+                    cashin_payout_commission=get_value(row, "cashin-payout commission"),
+                    cashout_total_transactions=get_value(row, "cashout-total number transactions"),
+                    cashout_total_numberVALID=get_value(row, "cashout-total numberVALID"),  # ✅ FIXED
+                    cashout_total_value=get_value(row, "cashout-total value"),
+                    cashout_total_valueVALID=get_value(row, "cashout-total valueVALID"),  # ✅ FIXED
+                    cashout_total_tax_on_valid=get_value(row, "cashout-total tax on VALID"),
+                    cashout_payout_commission=get_value(row, "cashout-payout commission"),
+                    total_commissions_due=get_value(row, "total commissions due")
                 )
             )
             success_count += 1  # ✅ Increment success count
@@ -223,6 +228,7 @@ def upload_commissions():
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
