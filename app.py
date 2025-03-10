@@ -271,24 +271,29 @@ def get_commissions():
             "id": c.id,  # 🔹 Include commission ID
             "phone_number": c.phone_number,  # 🔹 Ensures phone number consistency
             "date": c.date.strftime('%Y-%m-%d') if c.date else "N/A",
-            "amount": c.amount if c.amount else 0.0,
+            "amount": float(c.amount) if c.amount is not None else 0.0,  # ✅ Ensure numerical format
             "commission_period": c.commission_period if c.commission_period else "Not Provided",
-            "cashin_total_transactions": getattr(c, "cashin_total_transactions", "N/A"),
-            "cashin_total_value": getattr(c, "cashin_total_value", "N/A"),
-            "cashin_total_tax_on_valid": getattr(c, "cashin_total_tax_on_valid", "N/A"),
-            "cashin_payout_commission": getattr(c, "cashin_payout_commission", "N/A"),
-            "cashout_total_transactions": getattr(c, "cashout_total_transactions", "N/A"),
-            "cashout_total_value": getattr(c, "cashout_total_value", "N/A"),
-            "cashout_total_tax_on_valid": getattr(c, "cashout_total_tax_on_valid", "N/A"),
-            "cashout_payout_commission": getattr(c, "cashout_payout_commission", "N/A"),
-            "total_commissions_due": getattr(c, "total_commissions_due", "N/A"),
+            "cashin_total_transactions": c.cashin_total_transactions or "N/A",
+            "cashin_total_number_valid": c.cashin_total_number_valid or "N/A",  # ✅ Added missing field
+            "cashin_total_value": c.cashin_total_value or "N/A",
+            "cashin_total_value_valid": c.cashin_total_value_valid or "N/A",  # ✅ Added missing field
+            "cashin_total_tax_on_valid": c.cashin_total_tax_on_valid or "N/A",
+            "cashin_payout_commission": c.cashin_payout_commission or "N/A",
+            "cashout_total_transactions": c.cashout_total_transactions or "N/A",
+            "cashout_total_number_valid": c.cashout_total_number_valid or "N/A",  # ✅ Added missing field
+            "cashout_total_value": c.cashout_total_value or "N/A",
+            "cashout_total_value_valid": c.cashout_total_value_valid or "N/A",  # ✅ Added missing field
+            "cashout_total_tax_on_valid": c.cashout_total_tax_on_valid or "N/A",
+            "cashout_payout_commission": c.cashout_payout_commission or "N/A",
+            "total_commissions_due": float(c.total_commissions_due) if c.total_commissions_due is not None else 0.0,
         }
         for c in commissions
     ]
 
     print(f"✅ Found {len(response_data)} commissions for Agent ID: {agent.id}")
-    
+
     return jsonify(response_data)
+
 
 
 
