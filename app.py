@@ -258,21 +258,22 @@ def login():
     user = User.query.filter_by(phone_number=data['phone_number']).first()
 
     if user and bcrypt.check_password_hash(user.password_hash, data['password']):
-        # 🔹 Generate token first
+        # 🔹 Generate JWT token
         token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
 
-        # 🔹 Check if user must reset password
-        if user.first_login:
+        # 🔹 Check if the user must reset password (Only for file-uploaded users)
+        if user.first_login:  
             return jsonify({
                 'message': 'Password reset required',
                 'reset_required': True,
                 'token': token  # 🔹 Ensure token is included for reset
             }), 403  # Forbidden until password is reset
 
-        # 🔹 Return normal login response
+        # 🔹 Normal login response for manually registered users
         return jsonify({'token': token, 'role': user.role, 'first_name': user.first_name})
 
     return jsonify({'error': 'Invalid credentials'}), 401
+
 
 
 
@@ -290,23 +291,32 @@ def register():
     if User.query.filter_by(phone_number=data['phone_number']).first():
         return jsonify({'error': 'Phone number already registered'}), 409
 
-    # 🔹 Generate a unique username
-    username = f"{data['first_name'].lower()}.{data['last_name'].lower()}"
+    # 🔹 Ensure username is unique
+    base_username = f"{data['first_name'].lower()}.{data['last_name'].lower()}".replace(" ", "_")
+    username = base_username
+    counter = 1
+
+    while User.query.filter_by(username=username).first():
+        username = f"{base_username}{counter}"  # Append number if username exists
+        counter += 1
 
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+
     new_agent = User(
         first_name=data['first_name'].strip(),
         last_name=data['last_name'].strip(),
         phone_number=data['phone_number'].strip(),
         password_hash=hashed_password,
-        username=username,  # 🔹 Fix: Assign username automatically
-        role="agent"
+        username=username,  # ✅ Ensure unique username
+        role="agent",
+        first_login=False  # ✅ Manually registered users should NOT be forced to reset password
     )
 
     db.session.add(new_agent)
     db.session.commit()
 
     return jsonify({'message': 'Agent registered successfully'}), 201
+
 
 
 @app.route('/get_agents', methods=['GET'])
