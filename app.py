@@ -103,7 +103,7 @@ def upload_commissions():
 
     try:
         print(f"✅ Reading file: {filename}")
-        
+
         # ✅ Read Excel or CSV File
         df = pd.read_csv(file_path) if filename.endswith('.csv') else pd.read_excel(file_path)
         
@@ -112,22 +112,24 @@ def upload_commissions():
 
         # ✅ Updated Required Columns - Ensure exact match
         required_columns = {
-    "First Name", "Last Name", "Phone number", "Commission",  
-    "cashin-total number transactions", "cashin-total value", 
-    "cashin-total numberVALID", "cashin-total valueVALID",
-    "cashin-total tax on VALID", "cashin-payout commission",
-    "cashout-total number transactions", "cashout-total value",
-    "cashout-total numberVALID", "cashout-total valueVALID",
-    "cashout-total tax on VALID", "cashout-payout commission",
-    "total commissions due"
-          }
-
+            "First Name", "Last Name", "Phone number", "Commission",  
+            "cashin-total number transactions", "cashin-total value", 
+            "cashin-total numberVALID", "cashin-total valueVALID",
+            "cashin-total tax on VALID", "cashin-payout commission",
+            "cashout-total number transactions", "cashout-total value",
+            "cashout-total numberVALID", "cashout-total valueVALID",
+            "cashout-total tax on VALID", "cashout-payout commission",
+            "total commissions due"
+        }
 
         # ✅ Check for missing columns
         missing_columns = required_columns - set(df.columns)
         if missing_columns:
             print(f"❌ ERROR: Missing required columns: {missing_columns}")
             return jsonify({"error": f"Invalid file format. Missing columns: {missing_columns}"}), 400
+
+        total_records = len(df)  # ✅ Get total records in file
+        success_count = 0  # ✅ Track successful uploads
 
         new_commissions = []
         for _, row in df.iterrows():
@@ -180,17 +182,23 @@ def upload_commissions():
                     total_commissions_due=get_value("total commissions due")
                 )
             )
+            success_count += 1  # ✅ Increment success count
 
         if new_commissions:
             db.session.bulk_save_objects(new_commissions)
             db.session.commit()
-            print("✅ Commissions Successfully Inserted!")
+            print(f"✅ {success_count}/{total_records} Commissions Successfully Inserted!")
 
-        return jsonify({"message": "Commissions uploaded successfully! Agents auto-created if not found."})
+        return jsonify({
+            "message": "Commissions uploaded successfully!",
+            "total_records": total_records,  # ✅ Total records in the file
+            "records_uploaded": success_count  # ✅ Successfully uploaded records
+        })
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
