@@ -65,15 +65,20 @@ class Commission(db.Model):
     commission_period = db.Column(db.String(50), nullable=False)  # 🔹 Added field
 
     # **Additional Fields from the Excel Sheet**
+     # ✅ Add missing fields from Excel
     cashin_total_transactions = db.Column(db.String(20))  
     cashin_total_value = db.Column(db.String(20))  
+    cashin_total_number_valid = db.Column(db.String(20))  # Added
+    cashin_total_value_valid = db.Column(db.String(20))  # Added
     cashin_total_tax_on_valid = db.Column(db.String(20))  
     cashin_payout_commission = db.Column(db.String(20))  
     cashout_total_transactions = db.Column(db.String(20))  
     cashout_total_value = db.Column(db.String(20))  
+    cashout_total_number_valid = db.Column(db.String(20))  # Added
+    cashout_total_value_valid = db.Column(db.String(20))  # Added
     cashout_total_tax_on_valid = db.Column(db.String(20))  
     cashout_payout_commission = db.Column(db.String(20))  
-    total_commissions_due = db.Column(db.String(20))  # ✅ Store final total commissions
+    total_commissions_due = db.Column(db.String(20))  
 
 with app.app_context():
     db.create_all()
