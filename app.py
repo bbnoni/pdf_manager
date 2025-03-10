@@ -64,13 +64,24 @@ class Commission(db.Model):
     date = db.Column(db.Date, default=date.today)
     commission_period = db.Column(db.String(50), nullable=False)  # 🔹 Added field
 
+    # **Additional Fields from the Excel Sheet**
+    cashin_total_transactions = db.Column(db.String(20))  
+    cashin_total_value = db.Column(db.String(20))  
+    cashin_total_tax_on_valid = db.Column(db.String(20))  
+    cashin_payout_commission = db.Column(db.String(20))  
+    cashout_total_transactions = db.Column(db.String(20))  
+    cashout_total_value = db.Column(db.String(20))  
+    cashout_total_tax_on_valid = db.Column(db.String(20))  
+    cashout_payout_commission = db.Column(db.String(20))  
+    total_commissions_due = db.Column(db.String(20))  # ✅ Store final total commissions
+
 with app.app_context():
     db.create_all()
 
 @app.route('/upload_commissions', methods=['POST'])
 @jwt_required()
 def upload_commissions():
-    """ Uploads an Excel/CSV file and assigns commissions. If an agent does not exist, they are added. """
+    """ Uploads an Excel/CSV file and assigns commissions, including all additional fields. """
     user_identity = json.loads(get_jwt_identity())
     if user_identity['role'] != 'manager':
         return jsonify({'error': 'Unauthorized'}), 403
@@ -79,7 +90,7 @@ def upload_commissions():
         return jsonify({"error": "No file uploaded or commission period missing"}), 400
 
     file = request.files['file']
-    commission_period = request.form['commission_period'].strip()  # 🔹 Get manually entered period
+    commission_period = request.form['commission_period'].strip()  
     filename = secure_filename(file.filename)
 
     if not filename.endswith(('.csv', '.xlsx')):
@@ -89,11 +100,18 @@ def upload_commissions():
     file.save(file_path)
 
     try:
-        # 🔹 Check if the file is readable
         print(f"✅ Reading file: {filename}")
         df = pd.read_csv(file_path) if filename.endswith('.csv') else pd.read_excel(file_path)
 
-        required_columns = {"First Name", "Last Name", "Phone number", "Commission"}
+        required_columns = {
+            "First Name", "Last Name", "Phone number", "Commission", 
+            "cashin-total number transactions", "cashin-total value", 
+            "cashin-total tax on VALID", "cashin-payout commission",
+            "cashout-total number transactions", "cashout-total value",
+            "cashout-total tax on VALID", "cashout-payout commission",
+            "total commissions due"
+        }
+        
         if not required_columns.issubset(df.columns):
             print(f"❌ ERROR: Missing required columns. Found columns: {df.columns}")
             return jsonify({"error": "Invalid file format. Missing required columns."}), 400
@@ -105,36 +123,45 @@ def upload_commissions():
             phone_number = str(row["Phone number"]).strip()
             amount = float(row["Commission"])
 
-            # 🔹 Debug: Check each row
-            print(f"Processing Agent: {first_name} {last_name}, Phone: {phone_number}, Commission: {amount}, Period: {commission_period}")
-
             agent = User.query.filter_by(phone_number=phone_number).first()
 
             if not agent:
-                # 🔹 Log missing agent
                 print(f"❌ Agent with phone {phone_number} NOT FOUND! Creating a new agent.")
 
                 default_password = bcrypt.generate_password_hash("default123").decode('utf-8')
-                username = f"{first_name.lower()}.{last_name.lower()}".replace(" ", "_")  # Prevent empty username
+                username = f"{first_name.lower()}.{last_name.lower()}".replace(" ", "_")
 
                 new_agent = User(
-                    first_name=first_name,  # ✅ Ensure first_name is never None
-                    last_name=last_name,  # ✅ Ensure last_name is never None
-                    username=username,  # ✅ Ensure username is unique
+                    first_name=first_name,
+                    last_name=last_name,
+                    username=username,
                     password_hash=default_password,
                     role="agent",
                     phone_number=phone_number,
-                    first_login=True  # 🔹 Mark as first login (forces reset)
+                    first_login=True
                 )
                 db.session.add(new_agent)
-                db.session.commit()  # Save agent first
-                agent = new_agent  # Assign new agent
+                db.session.commit()
+                agent = new_agent  
 
-            # 🔹 Log commission assignment
             print(f"✅ Assigning Commission: Agent ID: {agent.id}, Amount: {amount}, Period: {commission_period}")
 
             new_commissions.append(
-                Commission(agent_id=agent.id, phone_number=phone_number, amount=amount, commission_period=commission_period)  # 🔹 Store period
+                Commission(
+                    agent_id=agent.id, 
+                    phone_number=phone_number, 
+                    amount=amount, 
+                    commission_period=commission_period,
+                    cashin_total_transactions=row["cashin-total number transactions"],
+                    cashin_total_value=row["cashin-total value"],
+                    cashin_total_tax_on_valid=row["cashin-total tax on VALID"],
+                    cashin_payout_commission=row["cashin-payout commission"],
+                    cashout_total_transactions=row["cashout-total number transactions"],
+                    cashout_total_value=row["cashout-total value"],
+                    cashout_total_tax_on_valid=row["cashout-total tax on VALID"],
+                    cashout_payout_commission=row["cashout-payout commission"],
+                    total_commissions_due=row["total commissions due"]
+                )
             )
 
         if new_commissions:
@@ -151,12 +178,13 @@ def upload_commissions():
 
 
 
+
 from datetime import datetime
 
 @app.route('/get_commissions', methods=['GET'])
 @jwt_required()
 def get_commissions():
-    """ Fetches commissions assigned to the logged-in agent with the manually entered commission period. """
+    """ Fetches commissions assigned to the logged-in agent, including all details. """
     user_identity = json.loads(get_jwt_identity())
     agent = User.query.filter_by(id=user_identity['id']).first()
 
@@ -174,10 +202,20 @@ def get_commissions():
         {
             "date": c.date.strftime('%Y-%m-%d'),
             "amount": c.amount,
-            "commission_period": c.commission_period  # 🔹 Now included in the response
+            "commission_period": c.commission_period,
+            "cashin_total_transactions": c.cashin_total_transactions,
+            "cashin_total_value": c.cashin_total_value,
+            "cashin_total_tax_on_valid": c.cashin_total_tax_on_valid,
+            "cashin_payout_commission": c.cashin_payout_commission,
+            "cashout_total_transactions": c.cashout_total_transactions,
+            "cashout_total_value": c.cashout_total_value,
+            "cashout_total_tax_on_valid": c.cashout_total_tax_on_valid,
+            "cashout_payout_commission": c.cashout_payout_commission,
+            "total_commissions_due": c.total_commissions_due
         }
         for c in commissions
     ])
+
 
 
 
