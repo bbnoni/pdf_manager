@@ -106,14 +106,14 @@ def upload_commissions():
 
         # ✅ Read Excel or CSV File
         df = pd.read_csv(file_path) if filename.endswith('.csv') else pd.read_excel(file_path)
-        
+
         # ✅ Debug: Print detected column names
         print(f"🔍 Detected Columns in File: {df.columns.tolist()}")
 
         # ✅ Updated Required Columns - Ensure exact match
         required_columns = {
-            "First Name", "Last Name", "Phone number", "Commission",  
-            "cashin-total number transactions", "cashin-total value", 
+            "First Name", "Last Name", "Phone number", "Commission",
+            "cashin-total number transactions", "cashin-total value",
             "cashin-total numberVALID", "cashin-total valueVALID",
             "cashin-total tax on VALID", "cashin-payout commission",
             "cashout-total number transactions", "cashout-total value",
@@ -132,11 +132,33 @@ def upload_commissions():
         success_count = 0  # ✅ Track successful uploads
 
         new_commissions = []
+
+        def generate_unique_username(first_name, last_name):
+            """ Generate a unique username by appending a number if needed. """
+            base_username = f"{first_name.lower()}.{last_name.lower()}".replace(" ", "_")
+            username = base_username
+            counter = 1
+
+            while User.query.filter_by(username=username).first():
+                username = f"{base_username}{counter}"
+                counter += 1
+
+            return username
+
         for _, row in df.iterrows():
-            first_name = row["First Name"].strip() if pd.notna(row["First Name"]) else "Unknown"
-            last_name = row["Last Name"].strip() if pd.notna(row["Last Name"]) else "User"
-            phone_number = str(row["Phone number"]).strip()
-            amount = float(row["Commission"])
+            first_name = str(row.get("First Name", "Unknown")).strip()
+            last_name = str(row.get("Last Name", "User")).strip()
+            phone_number = str(row.get("Phone number", "")).strip()
+
+            if not phone_number:
+                print(f"⚠️ Skipping record due to missing phone number: {row}")
+                continue
+
+            try:
+                amount = float(row.get("Commission", 0))
+            except ValueError:
+                print(f"⚠️ Skipping record due to invalid commission amount: {row}")
+                continue
 
             agent = User.query.filter_by(phone_number=phone_number).first()
 
@@ -144,7 +166,7 @@ def upload_commissions():
                 print(f"❌ Agent with phone {phone_number} NOT FOUND! Creating a new agent.")
 
                 default_password = bcrypt.generate_password_hash("default123").decode('utf-8')
-                username = f"{first_name.lower()}.{last_name.lower()}".replace(" ", "_")
+                username = generate_unique_username(first_name, last_name)
 
                 new_agent = User(
                     first_name=first_name,
@@ -157,19 +179,19 @@ def upload_commissions():
                 )
                 db.session.add(new_agent)
                 db.session.commit()
-                agent = new_agent  
+                agent = new_agent  # Assign new agent
 
             print(f"✅ Assigning Commission: Agent ID: {agent.id}, Amount: {amount}, Period: {commission_period}")
 
             # ✅ Ensuring safe access to optional fields (avoid missing keys)
             def get_value(column_name):
-                return row[column_name] if column_name in df.columns and pd.notna(row[column_name]) else None
+                return str(row.get(column_name, "")).strip() if column_name in df.columns else None
 
             new_commissions.append(
                 Commission(
-                    agent_id=agent.id, 
-                    phone_number=phone_number, 
-                    amount=amount, 
+                    agent_id=agent.id,
+                    phone_number=phone_number,
+                    amount=amount,
                     commission_period=commission_period,
                     cashin_total_transactions=get_value("cashin-total number transactions"),
                     cashin_total_value=get_value("cashin-total value"),
@@ -198,6 +220,7 @@ def upload_commissions():
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
