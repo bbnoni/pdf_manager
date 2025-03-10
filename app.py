@@ -104,8 +104,8 @@ def upload_commissions():
     try:
         print(f"✅ Reading file: {filename}")
 
-        # ✅ Read Excel or CSV File
-        df = pd.read_csv(file_path) if filename.endswith('.csv') else pd.read_excel(file_path)
+        # ✅ Read Excel or CSV File - Ensure Phone Number Stays as String
+        df = pd.read_csv(file_path, dtype={"Phone number": str}) if filename.endswith('.csv') else pd.read_excel(file_path, dtype={"Phone number": str})
 
         # ✅ Debug: Print detected column names
         print(f"🔍 Detected Columns in File: {df.columns.tolist()}")
@@ -148,7 +148,10 @@ def upload_commissions():
         for _, row in df.iterrows():
             first_name = str(row.get("First Name", "Unknown")).strip()
             last_name = str(row.get("Last Name", "User")).strip()
+            
+            # ✅ Ensure Phone Number Stays as String Without ".0"
             phone_number = str(row.get("Phone number", "")).strip()
+            phone_number = phone_number.split(".")[0] if ".0" in phone_number else phone_number
 
             if not phone_number:
                 print(f"⚠️ Skipping record due to missing phone number: {row}")
@@ -220,6 +223,7 @@ def upload_commissions():
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
