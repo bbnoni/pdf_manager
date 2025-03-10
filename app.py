@@ -112,15 +112,16 @@ def upload_commissions():
 
         # ✅ Updated Required Columns - Ensure exact match
         required_columns = {
-            "First Name", "Last Name", "Phone number", "Commission",  
-            "cashin-total number transactions", "cashin-total value", 
-            "cashin-total numberVALID", "cashin-total valueVALID",
-            "cashin-total tax on VALID", "cashin-payout commission",
-            "cashout-total number transactions", "cashout-total value",
-            "cashout-total numberVALID", "cashout-total valueVALID",
-            "cashout-total tax on VALID", "cashout-payout commission",
-            "total commissions due"
-        }
+    "First Name", "Last Name", "Phone number", "Commission",  
+    "cashin-total number transactions", "cashin-total value", 
+    "cashin-total numberVALID", "cashin-total valueVALID",
+    "cashin-total tax on VALID", "cashin-payout commission",
+    "cashout-total number transactions", "cashout-total value",
+    "cashout-total numberVALID", "cashout-total valueVALID",
+    "cashout-total tax on VALID", "cashout-payout commission",
+    "total commissions due"
+          }
+
 
         # ✅ Check for missing columns
         missing_columns = required_columns - set(df.columns)
