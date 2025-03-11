@@ -314,19 +314,24 @@ def login():
         # 🔹 Generate JWT token
         token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
 
-        # 🔹 Check if the user must reset password (Only for file-uploaded users)
+        # 🔹 Check if the user must reset password (Only for first-time users)
         if user.first_login:  
             return jsonify({
                 'message': 'Password reset required',
                 'reset_required': True,
-                'token': token  # 🔹 Ensure token is included for reset
+                'token': token,  # 🔹 Ensure token is included for reset
+                'first_login': True  # ✅ Explicitly return first_login status
             }), 403  # Forbidden until password is reset
 
         # 🔹 Normal login response for manually registered users
-        return jsonify({'token': token, 'role': user.role, 'first_name': user.first_name})
+        return jsonify({
+            'token': token,
+            'role': user.role,
+            'first_name': user.first_name,
+            'first_login': False  # ✅ Explicitly return false for normal users
+        })
 
     return jsonify({'error': 'Invalid credentials'}), 401
-
 
 
 
@@ -451,7 +456,7 @@ def mark_as_viewed(pdf_id):
 @app.route('/reset_password', methods=['POST'])
 @jwt_required()
 def reset_password():
-    """ Allows first-time agents to reset their password """
+    """ Allows first-time users to reset their password """
     try:
         user_identity = json.loads(get_jwt_identity())
         user = User.query.get(user_identity['id'])
@@ -470,12 +475,18 @@ def reset_password():
         user.first_login = False  # ✅ Mark first login as complete
         db.session.commit()
 
-        return jsonify({"message": "Password updated successfully. You can now log in."}), 200
+        # 🔹 Generate a new token after password reset
+        new_token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
+
+        return jsonify({
+            "message": "Password updated successfully. You can now log in.",
+            "token": new_token,  # ✅ Return a new token after reset
+            "first_login": False  # ✅ Ensure first_login is now false
+        }), 200
     
     except Exception as e:
         print(f"❌ Reset Password Error: {e}")  # Log error for debugging
         return jsonify({"error": "Something went wrong. Please try again."}), 500
-
 
 
 
