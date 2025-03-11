@@ -303,19 +303,22 @@ def get_commissions():
 # Authentication
 @app.route('/login', methods=['POST'])
 def login():
-    """ Login using phone number and password. """
+    """ Login using phone number OR username and password. """
     data = request.json
     if not data or 'phone_number' not in data or 'password' not in data:
         return jsonify({'error': 'Invalid request'}), 400
 
-    user = User.query.filter_by(phone_number=data['phone_number']).first()
+    # 🔹 Allow login using either Phone Number OR Username
+    user = User.query.filter(
+        (User.phone_number == data['phone_number']) | (User.username == data['phone_number'])
+    ).first()
 
     if user and bcrypt.check_password_hash(user.password_hash, data['password']):
         # 🔹 Generate JWT token
         token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
 
         # 🔹 Check if the user must reset password (Only for first-time users)
-        if user.first_login:  
+        if user.first_login:
             return jsonify({
                 'message': 'Password reset required',
                 'reset_required': True,
@@ -331,17 +334,22 @@ def login():
             'first_login': False  # ✅ Explicitly return false for normal users
         })
 
-    return jsonify({'error': 'Invalid credentials'}), 401
+    return jsonify({'error': 'Invalid credentials'}, 401)
+
 
 
 
 
 
 @app.route('/register', methods=['POST'])
+@jwt_required(optional=True)  # ✅ Allow managers to register other managers while allowing public agent sign-ups
 def register():
-    """ Register a new agent using first name, last name, phone number, and password. """
+    """ Register a new agent or manager. 
+        - Agents who register manually get `first_login = False`
+        - Managers created by an existing manager get `first_login = True` 
+    """
     data = request.json
-    required_fields = ['first_name', 'last_name', 'phone_number', 'password']
+    required_fields = ['first_name', 'last_name', 'phone_number', 'password', 'role']
 
     if not all(field in data for field in required_fields):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -360,20 +368,25 @@ def register():
 
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
 
-    new_agent = User(
+    # 🔹 Determine if user is self-registering (agent) or being created (manager)
+    jwt_identity = get_jwt_identity()
+    is_manager_creation = jwt_identity and json.loads(jwt_identity).get("role") == "manager"
+
+    new_user = User(
         first_name=data['first_name'].strip(),
         last_name=data['last_name'].strip(),
         phone_number=data['phone_number'].strip(),
         password_hash=hashed_password,
         username=username,  # ✅ Ensure unique username
-        role="agent",
-        first_login=False  # ✅ Manually registered users should NOT be forced to reset password
+        role=data['role'].strip().lower(),  # Can be "agent" or "manager"
+        first_login=is_manager_creation  # ✅ True for new managers, False for manually registered agents
     )
 
-    db.session.add(new_agent)
+    db.session.add(new_user)
     db.session.commit()
 
-    return jsonify({'message': 'Agent registered successfully'}), 201
+    return jsonify({'message': f"{data['role'].capitalize()} registered successfully!"}), 201
+
 
 
 
