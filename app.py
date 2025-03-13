@@ -530,20 +530,15 @@ def forgot_password():
         if not user:
             return jsonify({"error": "Phone number not registered"}), 404
 
-        # Generate a temporary password (or reset token)
-        temp_password = str(randint(100000, 999999))  # 6-digit code
-        user.password_hash = bcrypt.generate_password_hash(temp_password).decode('utf-8')
+        # Generate a temporary reset token
+        reset_token = str(randint(100000, 999999))  # 6-digit code
+        user.password_hash = bcrypt.generate_password_hash(reset_token).decode('utf-8')
         db.session.commit()
 
         # Mock sending the reset token via SMS, Email, or WhatsApp
-        if channel == "sms":
-            print(f"📩 SMS sent to {phone_number}: Your reset code is {temp_password}")
-        elif channel == "email":
-            print(f"📩 Email sent to {user.username}@example.com: Your reset code is {temp_password}")
-        elif channel == "whatsapp":
-            print(f"📩 WhatsApp message sent to {phone_number}: Your reset code is {temp_password}")
+        print(f"📩 {channel.upper()} sent to {phone_number}: Your reset code is {reset_token}")
 
-        return jsonify({"message": f"Reset code sent via {channel}"}), 200
+        return jsonify({"message": f"Reset code sent via {channel}", "token": reset_token}), 200
 
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
