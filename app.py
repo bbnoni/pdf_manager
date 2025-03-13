@@ -520,11 +520,11 @@ import random
 
 @app.route('/forgot_password', methods=['POST'])
 def forgot_password():
-    """Handles Forgot Password Requests"""
+    """Handles Forgot Password Requests Securely"""
     try:
         data = request.json
         phone_number = data.get("phone_number", "").strip()
-        channel = data.get("channel", "").strip()  # "sms", "email", "whatsapp"
+        channel = data.get("channel", "").strip().lower()  # "sms", "email", "whatsapp"
 
         if not phone_number or not channel:
             return jsonify({"error": "Phone number and channel are required"}), 400
@@ -539,17 +539,25 @@ def forgot_password():
         # ✅ Store reset token & expiration time (e.g., 10 minutes validity)
         user.reset_token = reset_token
         user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=10)
-
         db.session.commit()
 
-        # ✅ Mock sending the reset token via SMS, Email, or WhatsApp
-        print(f"📩 {channel.upper()} sent to {phone_number}: Your reset code is {reset_token}")
+        # ✅ Ensure email is fetched from the system, not user input
+        if channel == "email":
+            registered_email = f"{user.username}@example.com"  # 🔹 Modify based on your system
+            print(f"📩 Email sent to {registered_email}: Your reset code is {reset_token}")
 
-        return jsonify({"message": f"Reset code sent via {channel}", "token": reset_token}), 200
+        elif channel == "sms":
+            print(f"📩 SMS sent to {phone_number}: Your reset code is {reset_token}")
+
+        elif channel == "whatsapp":
+            print(f"📩 WhatsApp message sent to {phone_number}: Your reset code is {reset_token}")
+
+        return jsonify({"message": f"Reset code sent via {channel}"}), 200
 
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
