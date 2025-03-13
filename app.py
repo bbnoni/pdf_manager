@@ -467,28 +467,36 @@ def mark_as_viewed(pdf_id):
     return jsonify({'error': 'PDF not found'}), 404
 
 @app.route('/reset_password', methods=['POST'])
-@jwt_required()
+@jwt_required(optional=True)  # ✅ Optional JWT for forgot password users
 def reset_password():
-    """ Allows first-time users to reset their password """
+    """ Allows users to reset their password (both first-time users and forgot password users) """
     try:
-        user_identity = json.loads(get_jwt_identity())
-        user = User.query.get(user_identity['id'])
-
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-
         data = request.json
+        phone_number = data.get('phone_number', '').strip()
         new_password = data.get('new_password', '').strip()
 
         if not new_password or len(new_password) < 6:
             return jsonify({"error": "New password must be at least 6 characters"}), 400
 
+        user = None  # Initialize user variable
+
+        # 🔹 Check if user is resetting password via JWT (first-time login reset)
+        if get_jwt_identity():
+            user_identity = json.loads(get_jwt_identity())
+            user = User.query.get(user_identity['id'])
+        # 🔹 Check if user is resetting password via phone_number (forgot password)
+        elif phone_number:
+            user = User.query.filter_by(phone_number=phone_number).first()
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
         # 🔹 Update password and remove first_login flag
         user.password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
-        user.first_login = False  # ✅ Mark first login as complete
+        user.first_login = False  # ✅ Mark reset as complete
         db.session.commit()
 
-        # 🔹 Generate a new token after password reset
+        # 🔹 Generate a new JWT token after password reset
         new_token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
 
         return jsonify({
@@ -500,6 +508,45 @@ def reset_password():
     except Exception as e:
         print(f"❌ Reset Password Error: {e}")  # Log error for debugging
         return jsonify({"error": "Something went wrong. Please try again."}), 500
+
+    
+
+    from random import randint
+
+@app.route('/forgot_password', methods=['POST'])
+def forgot_password():
+    """Handles Forgot Password Requests"""
+    try:
+        data = request.json
+        phone_number = data.get("phone_number", "").strip()
+        channel = data.get("channel", "").strip()  # "sms", "email", "whatsapp"
+
+        if not phone_number or not channel:
+            return jsonify({"error": "Phone number and channel are required"}), 400
+
+        user = User.query.filter_by(phone_number=phone_number).first()
+        if not user:
+            return jsonify({"error": "Phone number not registered"}), 404
+
+        # Generate a temporary password (or reset token)
+        temp_password = str(randint(100000, 999999))  # 6-digit code
+        user.password_hash = bcrypt.generate_password_hash(temp_password).decode('utf-8')
+        db.session.commit()
+
+        # Mock sending the reset token via SMS, Email, or WhatsApp
+        if channel == "sms":
+            print(f"📩 SMS sent to {phone_number}: Your reset code is {temp_password}")
+        elif channel == "email":
+            print(f"📩 Email sent to {user.username}@example.com: Your reset code is {temp_password}")
+        elif channel == "whatsapp":
+            print(f"📩 WhatsApp message sent to {phone_number}: Your reset code is {temp_password}")
+
+        return jsonify({"message": f"Reset code sent via {channel}"}), 200
+
+    except Exception as e:
+        print(f"❌ Forgot Password Error: {e}")
+        return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
