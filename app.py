@@ -9,6 +9,8 @@ import json
 import pandas as pd
 from datetime import date
 from flask_migrate import Migrate  # ✅ Import Flask-Migrate
+from random import randint  # ✅ Import randint for generating OTPs
+
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS
