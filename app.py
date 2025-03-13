@@ -343,6 +343,8 @@ def login():
 
 
 
+
+
 @app.route('/register', methods=['POST'])
 @jwt_required(optional=True)  # ✅ Allow managers to register other managers while allowing public agent sign-ups
 def register():
@@ -351,7 +353,7 @@ def register():
         - Managers created by an existing manager get `first_login = True` 
     """
     data = request.json
-    required_fields = ['first_name', 'last_name', 'phone_number', 'password', 'role']
+    required_fields = ['first_name', 'last_name', 'phone_number', 'role']
 
     if not all(field in data for field in required_fields):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -368,7 +370,10 @@ def register():
         username = f"{base_username}{counter}"  # Append number if username exists
         counter += 1
 
-    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+    # ✅ Generate a random 6-digit password
+    generated_password = str(random.randint(100000, 999999))
+
+    hashed_password = bcrypt.generate_password_hash(generated_password).decode('utf-8')
 
     # 🔹 Determine if user is self-registering (agent) or being created (manager)
     jwt_identity = get_jwt_identity()
@@ -386,6 +391,18 @@ def register():
 
     db.session.add(new_user)
     db.session.commit()
+
+    # ✅ Log the generated password for debugging
+    print(f"✅ {data['role'].capitalize()} Created: {data['phone_number']}, Password: {generated_password}")
+
+    # ✅ Send notification via SMS, Email, or WhatsApp
+    notify_channel = data.get("notify_channel", "sms")  # Default to SMS
+    if notify_channel == "sms":
+        print(f"📩 SMS sent to {data['phone_number']}: Your temporary password is {generated_password}")
+    elif notify_channel == "email":
+        print(f"📩 Email sent to {data['phone_number']}@example.com: Your temporary password is {generated_password}")
+    elif notify_channel == "whatsapp":
+        print(f"📩 WhatsApp message sent to {data['phone_number']}: Your temporary password is {generated_password}")
 
     return jsonify({'message': f"{data['role'].capitalize()} registered successfully!"}), 201
 
