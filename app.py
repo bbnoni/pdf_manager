@@ -515,6 +515,9 @@ def reset_password():
 
     from random import randint
 
+from datetime import datetime, timedelta
+import random
+
 @app.route('/forgot_password', methods=['POST'])
 def forgot_password():
     """Handles Forgot Password Requests"""
@@ -530,12 +533,16 @@ def forgot_password():
         if not user:
             return jsonify({"error": "Phone number not registered"}), 404
 
-        # Generate a temporary reset token
-        reset_token = str(randint(100000, 999999))  # 6-digit code
-        user.password_hash = bcrypt.generate_password_hash(reset_token).decode('utf-8')
+        # ✅ Generate a 6-digit reset token
+        reset_token = str(random.randint(100000, 999999))
+
+        # ✅ Store reset token & expiration time (e.g., 10 minutes validity)
+        user.reset_token = reset_token
+        user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=10)
+
         db.session.commit()
 
-        # Mock sending the reset token via SMS, Email, or WhatsApp
+        # ✅ Mock sending the reset token via SMS, Email, or WhatsApp
         print(f"📩 {channel.upper()} sent to {phone_number}: Your reset code is {reset_token}")
 
         return jsonify({"message": f"Reset code sent via {channel}", "token": reset_token}), 200
@@ -543,6 +550,7 @@ def forgot_password():
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
