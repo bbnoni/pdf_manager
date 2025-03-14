@@ -535,6 +535,8 @@ def reset_password():
 from datetime import datetime, timedelta
 import random
 
+
+
 @app.route('/forgot_password', methods=['POST'])
 def forgot_password():
     """Handles Forgot Password Requests Securely"""
@@ -548,21 +550,26 @@ def forgot_password():
 
         print(f"🔍 Received phone number: {phone_number}")
 
-        # ✅ Normalize phone number
+        # ✅ Normalize phone number (handles both cases)
         normalized_phone = phone_number
         if phone_number.startswith("0"):  
             normalized_phone = f"233{phone_number[1:]}"  # Convert `024xxxxxxx` → `23324xxxxxxx`
 
         print(f"🔄 Normalized phone number: {normalized_phone}")
 
-        # ✅ Check both formats in the database
+        # ✅ Debugging: Check how numbers are stored
+        stored_numbers = User.query.with_entities(User.phone_number).all()
+        stored_numbers = [num[0] for num in stored_numbers]
+        print(f"📋 Stored phone numbers in DB: {stored_numbers}")
+
+        # ✅ Query both formats in database
         user = User.query.filter(
             (User.phone_number == phone_number) |  # Original format
             (User.phone_number == normalized_phone)  # Normalized format
         ).first()
 
         if not user:
-            print(f"❌ Phone number {phone_number} not registered.")
+            print(f"❌ Phone number {phone_number} (or {normalized_phone}) not registered.")
             return jsonify({"error": "Phone number not registered"}), 404
 
         # ✅ Generate a 6-digit reset token
