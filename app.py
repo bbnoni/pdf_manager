@@ -348,14 +348,12 @@ def login():
 
 
 
-
-
 @app.route('/register', methods=['POST'])
 @jwt_required(optional=True)  # ✅ Allow managers to register other managers while allowing public agent sign-ups
 def register():
     """ Register a new agent or manager. 
-        - Agents who register manually get `first_login = False`
-        - Managers created by an existing manager get `first_login = True` 
+        - Agents who register manually get first_login = False
+        - Managers created by an existing manager get first_login = True 
     """
     data = request.json
     required_fields = ['first_name', 'last_name', 'phone_number', 'role']
@@ -568,12 +566,6 @@ def reset_password():
 
 
 
-    
-
-    from random import randint
-
-from datetime import datetime, timedelta
-import random
 
 
 from datetime import datetime, timedelta
