@@ -502,16 +502,24 @@ def reset_password():
 
         user = None  # Initialize user variable
 
+        # ✅ Normalize phone number for correct matching
+        formatted_phone = phone_number
+        if phone_number.startswith("233"):
+            formatted_phone = f"0{phone_number[3:]}"  # Convert `233244562363` → `0244562363`
+
+        print(f"🔍 Searching for phone number: {formatted_phone}")
+
         # 🔹 Case 1: First-time login password reset (via JWT)
         if get_jwt_identity():
             user_identity = json.loads(get_jwt_identity())
             user = User.query.get(user_identity['id'])
 
         # 🔹 Case 2: Forgot password reset (via phone number + token)
-        elif phone_number and token:
-            user = User.query.filter_by(phone_number=phone_number).first()
+        elif formatted_phone and token:
+            user = User.query.filter_by(phone_number=formatted_phone).first()
 
             if not user:
+                print(f"❌ User not found for phone: {formatted_phone}")
                 return jsonify({"error": "User not found"}), 404
 
             # ✅ Check if the token is correct (since it's not stored in DB, match with frontend-stored one)
@@ -534,7 +542,7 @@ def reset_password():
         # 🔹 Generate a new JWT token after password reset
         new_token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
 
-        print(f"✅ Password successfully reset for {phone_number}")
+        print(f"✅ Password successfully reset for {formatted_phone}")
 
         return jsonify({
             "message": "Password updated successfully. You can now log in.",
@@ -545,6 +553,7 @@ def reset_password():
     except Exception as e:
         print(f"❌ Reset Password Error: {e}")  # Log error for debugging
         return jsonify({"error": "Something went wrong. Please try again."}), 500
+
 
 
     
@@ -599,15 +608,17 @@ def forgot_password():
         elif channel == "whatsapp":
             print(f"📩 WhatsApp message sent to {user.phone_number}: Your reset code is {reset_token}")
 
-        # ✅ Return token in API response
+        # ✅ Store reset token in the frontend instead of returning it
+        print(f"🔐 Store this token in the frontend securely!")
+
         return jsonify({
-            "message": f"Reset code sent via {channel}",
-            "token": reset_token  # 🔹 Now included in the response
-        }), 200
+            "message": f"Reset code sent via {channel}"
+        }), 200  # ✅ No longer sending the reset token in API response
 
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
