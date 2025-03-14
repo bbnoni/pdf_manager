@@ -525,66 +525,44 @@ def reset_password():
         if len(new_password) < 6:
             return jsonify({"error": "New password must be at least 6 characters"}), 400
 
-        user = None  # Initialize user variable
-
         # ✅ Normalize phone number for correct matching
-        if phone_number.startswith("233"):
-            formatted_phone = f"0{phone_number[3:]}"  # Convert `233244562363` → `0244562363`
-        else:
-            formatted_phone = phone_number
-
+        formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
         print(f"🔍 Searching for user with phone number: {formatted_phone}")
 
-        # 🔹 Case 1: First-time login password reset (via JWT)
-        if get_jwt_identity():
-            user_identity = json.loads(get_jwt_identity())
-            user = User.query.get(user_identity['id'])
-
-        # 🔹 Case 2: Forgot password reset (via phone number + token)
-        elif formatted_phone and token:
-            user = User.query.filter_by(phone_number=formatted_phone).first()
-
-            if not user:
-                print(f"❌ User not found for phone: {formatted_phone}")
-                return jsonify({"error": "User not found"}), 404
-
-            # ✅ Retrieve reset token from frontend request headers
-            stored_token = request.headers.get("X-Reset-Token")  
-            print(f"🔑 Stored Token: {stored_token} | Received Token: {token}")
-
-            if not stored_token or stored_token != token:
-                print(f"❌ Token mismatch for {formatted_phone}")
-                return jsonify({"error": "Invalid or expired reset token"}), 400
+        # ✅ Find user by phone number
+        user = User.query.filter_by(phone_number=formatted_phone).first()
 
         if not user:
+            print(f"❌ User not found for phone: {formatted_phone}")
             return jsonify({"error": "User not found"}), 404
 
-        # 🔹 Update password and remove first_login flag
+        # ✅ Validate token from the database
+        if not user.reset_token or user.reset_token != token:
+            print(f"❌ Invalid or expired reset token for {formatted_phone}")
+            return jsonify({"error": "Invalid or expired reset token"}), 400
+
+        # ✅ Reset password and clear the reset token
         hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
         user.password_hash = hashed_password
         user.first_login = False  # ✅ Mark reset as complete
+        user.reset_token = None  # ✅ Clear the reset token after successful reset
         db.session.commit()
 
-        # 🔹 Frontend should clear the reset token from secure storage
-        print(f"✅ Password successfully reset for {formatted_phone}. Request frontend to clear token.")
+        print(f"✅ Password successfully reset for {formatted_phone}")
 
-        return jsonify({
-            "message": "Password updated successfully. You can now log in.",
-        }), 200
-    
+        return jsonify({"message": "Password updated successfully. You can now log in."}), 200
+
     except Exception as e:
-        print(f"❌ Reset Password Error: {e}")  # Log error for debugging
+        print(f"❌ Reset Password Error: {e}")
         return jsonify({"error": "Something went wrong. Please try again."}), 500
 
 
 
 
-    
-
-
-
 from datetime import datetime, timedelta
 import random
+
+
 
 @app.route('/forgot_password', methods=['POST'])
 def forgot_password():
@@ -600,11 +578,7 @@ def forgot_password():
         print(f"🔍 Received phone number: {phone_number}")
 
         # ✅ Normalize phone number
-        if phone_number.startswith("233"):
-            formatted_phone = f"0{phone_number[3:]}"
-        else:
-            formatted_phone = phone_number
-
+        formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
         print(f"🔄 Normalized phone number: {formatted_phone}")
 
         # ✅ Check if user exists
@@ -615,8 +589,12 @@ def forgot_password():
 
         # ✅ Generate a 6-digit reset token
         reset_token = str(random.randint(100000, 999999))
-
         print(f"✅ Reset token generated: {reset_token} for {user.phone_number}")
+
+        # ✅ Store reset token in the database
+        user.reset_token = reset_token
+        db.session.commit()
+        print(f"🔐 Reset token stored in the database for {formatted_phone}")
 
         # ✅ Send the token via the selected channel
         if channel == "email":
@@ -629,17 +607,12 @@ def forgot_password():
         elif channel == "whatsapp":
             print(f"📩 WhatsApp message sent to {user.phone_number}: Your reset code is {reset_token}")
 
-        print("🔐 Store this token in the frontend securely!")
-
-        # ✅ FIX: Include token in API response
-        return jsonify({
-            "message": f"Reset code sent via {channel}",
-            "token": reset_token  # ✅ Now included in response
-        }), 200
+        return jsonify({"message": f"Reset code sent via {channel}"}), 200
 
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
