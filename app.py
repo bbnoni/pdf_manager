@@ -10,11 +10,7 @@ import pandas as pd
 from datetime import date
 from flask_migrate import Migrate  # ✅ Import Flask-Migrate
 from random import randint  # ✅ Import randint for generating OTPs
-from datetime import datetime
-from flask import request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from werkzeug.security import generate_password_hash
-from models import User, db  # Ensure you have User model and db imported
+
 
 
 app = Flask(__name__)
