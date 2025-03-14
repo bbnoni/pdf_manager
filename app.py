@@ -546,13 +546,20 @@ def forgot_password():
         if not phone_number or not channel:
             return jsonify({"error": "Phone number and channel are required"}), 400
 
-        print(f"🔍 Checking phone number: {phone_number}")
+        print(f"🔍 Received phone number: {phone_number}")
 
-        # ✅ Normalize phone number before querying database
-        if phone_number.startswith("0"):  # Convert 024xxxxxxx → 23324xxxxxxx
-            phone_number = f"233{phone_number[1:]}"
-        
-        user = User.query.filter_by(phone_number=phone_number).first()
+        # ✅ Normalize phone number
+        normalized_phone = phone_number
+        if phone_number.startswith("0"):  
+            normalized_phone = f"233{phone_number[1:]}"  # Convert `024xxxxxxx` → `23324xxxxxxx`
+
+        print(f"🔄 Normalized phone number: {normalized_phone}")
+
+        # ✅ Check both formats in the database
+        user = User.query.filter(
+            (User.phone_number == phone_number) |  # Original format
+            (User.phone_number == normalized_phone)  # Normalized format
+        ).first()
 
         if not user:
             print(f"❌ Phone number {phone_number} not registered.")
@@ -577,12 +584,13 @@ def forgot_password():
         # ✅ Return token in API response so Flutter can store it
         return jsonify({
             "message": f"Reset code sent via {channel}",
-            "token": reset_token  # 🔹 This is now included in the response
+            "token": reset_token  # 🔹 Now included in the response
         }), 200
 
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
