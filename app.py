@@ -371,70 +371,80 @@ import random
 from datetime import datetime, timedelta
 
 @app.route('/register', methods=['POST'])
-@jwt_required(optional=True)  # ✅ Allow managers to register other managers while allowing public agent sign-ups
+@jwt_required(optional=True)  # ✅ Optional JWT for manager-created users
 def register():
     """ Register a new agent or manager. 
         - Agents who register manually get `first_login = False`
         - Managers created by an existing manager get `first_login = True` 
     """
-    data = request.json
-    required_fields = ['first_name', 'last_name', 'phone_number', 'role']
+    try:
+        data = request.json
+        required_fields = ['first_name', 'last_name', 'phone_number', 'role']
 
-    if not all(field in data for field in required_fields):
-        return jsonify({'error': 'Missing required fields'}), 400
+        if not all(field in data for field in required_fields):
+            return jsonify({'error': 'Missing required fields'}), 400
 
-    if User.query.filter_by(phone_number=data['phone_number']).first():
-        return jsonify({'error': 'Phone number already registered'}), 409
+        if User.query.filter_by(phone_number=data['phone_number']).first():
+            return jsonify({'error': 'Phone number already registered'}), 409
 
-    # 🔹 Ensure username is unique
-    base_username = f"{data['first_name'].lower()}.{data['last_name'].lower()}".replace(" ", "_")
-    username = base_username
-    counter = 1
+        # 🔹 Ensure username is unique
+        base_username = f"{data['first_name'].lower()}.{data['last_name'].lower()}".replace(" ", "_")
+        username = base_username
+        counter = 1
 
-    while User.query.filter_by(username=username).first():
-        username = f"{base_username}{counter}"  # Append number if username exists
-        counter += 1
+        while User.query.filter_by(username=username).first():
+            username = f"{base_username}{counter}"  # Append number if username exists
+            counter += 1
 
-    # ✅ Generate a random 6-digit temporary password
-    temp_password = str(random.randint(100000, 999999))
-    hashed_password = bcrypt.generate_password_hash(temp_password).decode('utf-8')
+        # ✅ Generate a random 6-digit password
+        temp_password = str(random.randint(100000, 999999))
+        hashed_password = bcrypt.generate_password_hash(temp_password).decode('utf-8')
 
-    # ✅ Generate a reset token (valid for 30 minutes)
-    reset_token = str(random.randint(100000, 999999))
-    reset_token_expiry = datetime.utcnow() + timedelta(minutes=30)
+        # ✅ Generate a reset token (valid for 30 minutes)
+        reset_token = str(random.randint(100000, 999999))
+        reset_token_expiry = datetime.utcnow() + timedelta(minutes=30)
 
-    # 🔹 Determine if user is self-registering (agent) or being created (manager)
-    jwt_identity = get_jwt_identity()
-    is_manager_creation = jwt_identity and json.loads(jwt_identity).get("role") == "manager"
+        # 🔹 Determine if a manager is creating another manager
+        jwt_identity = get_jwt_identity()
+        is_manager_creation = jwt_identity and json.loads(jwt_identity).get("role") == "manager"
 
-    new_user = User(
-        first_name=data['first_name'].strip(),
-        last_name=data['last_name'].strip(),
-        phone_number=data['phone_number'].strip(),
-        password_hash=hashed_password,
-        username=username,  # ✅ Ensure unique username
-        role=data['role'].strip().lower(),  # Can be "agent" or "manager"
-        first_login=True,  # ✅ Mark first login as True
-        reset_token=reset_token,  # ✅ Store reset token
-        reset_token_expiry=reset_token_expiry  # ✅ Set token expiry
-    )
+        # ✅ Allow public registration for `agents`, but restrict `managers` to admin users
+        if data['role'].strip().lower() == "manager" and not is_manager_creation:
+            return jsonify({"error": "Unauthorized. Only managers can create other managers."}), 403
 
-    db.session.add(new_user)
-    db.session.commit()
+        new_user = User(
+            first_name=data['first_name'].strip(),
+            last_name=data['last_name'].strip(),
+            phone_number=data['phone_number'].strip(),
+            password_hash=hashed_password,
+            username=username,  # ✅ Ensure unique username
+            role=data['role'].strip().lower(),  # Can be "agent" or "manager"
+            first_login=True,  # ✅ Mark first login as True
+            reset_token=reset_token,  # ✅ Store reset token
+            reset_token_expiry=reset_token_expiry  # ✅ Set token expiry
+        )
 
-    # ✅ Log the generated password & reset token for debugging
-    print(f"✅ {data['role'].capitalize()} Created: {data['phone_number']}, Password: {temp_password}, Reset Token: {reset_token}")
+        db.session.add(new_user)
+        db.session.commit()
 
-    # ✅ Send notification via SMS, Email, or WhatsApp
-    notify_channel = data.get("notify_channel", "sms")  # Default to SMS
-    if notify_channel == "sms":
-        print(f"📩 SMS sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
-    elif notify_channel == "email":
-        print(f"📩 Email sent to {data['phone_number']}@example.com: Your temporary password is {temp_password} and reset code is {reset_token}")
-    elif notify_channel == "whatsapp":
-        print(f"📩 WhatsApp message sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
+        # ✅ Log the generated password & reset token for debugging
+        print(f"✅ {data['role'].capitalize()} Created: {data['phone_number']}, Password: {temp_password}, Reset Token: {reset_token}")
 
-    return jsonify({'message': f"{data['role'].capitalize()} registered successfully!"}), 201
+        # ✅ Send notification via SMS, Email, or WhatsApp
+        notify_channel = data.get("notify_channel", "sms")  # Default to SMS
+        if notify_channel == "sms":
+            print(f"📩 SMS sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
+        elif notify_channel == "email":
+            print(f"📩 Email sent to {data['phone_number']}@example.com: Your temporary password is {temp_password} and reset code is {reset_token}")
+        elif notify_channel == "whatsapp":
+            print(f"📩 WhatsApp message sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
+
+        return jsonify({'message': f"{data['role'].capitalize()} registered successfully!"}), 201
+
+    except Exception as e:
+        print(f"❌ Register Error: {e}")  # Log error for debugging
+        return jsonify({"error": "Something went wrong. Please try again."}), 500
+
 
 
 
