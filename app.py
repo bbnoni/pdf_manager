@@ -497,17 +497,21 @@ def reset_password():
         token = data.get("token", "").strip()  # ✅ Added reset token
         new_password = data.get('new_password', '').strip()
 
-        if not new_password or len(new_password) < 6:
+        if not phone_number or not token or not new_password:
+            return jsonify({"error": "Phone number, token, and new password are required"}), 400
+
+        if len(new_password) < 6:
             return jsonify({"error": "New password must be at least 6 characters"}), 400
 
         user = None  # Initialize user variable
 
         # ✅ Normalize phone number for correct matching
-        formatted_phone = phone_number
         if phone_number.startswith("233"):
             formatted_phone = f"0{phone_number[3:]}"  # Convert `233244562363` → `0244562363`
+        else:
+            formatted_phone = phone_number
 
-        print(f"🔍 Searching for phone number: {formatted_phone}")
+        print(f"🔍 Searching for user with phone number: {formatted_phone}")
 
         # 🔹 Case 1: First-time login password reset (via JWT)
         if get_jwt_identity():
@@ -522,11 +526,12 @@ def reset_password():
                 print(f"❌ User not found for phone: {formatted_phone}")
                 return jsonify({"error": "User not found"}), 404
 
-            # ✅ Check if the token is correct (since it's not stored in DB, match with frontend-stored one)
-            stored_token = user.reset_token  # 🔹 Ensure reset_token is being stored in the `forgot_password` route
+            # ✅ Retrieve stored reset token from frontend storage
+            stored_token = request.headers.get("X-Reset-Token")  # 🔹 Frontend should send token in headers
             print(f"🔑 Stored Token: {stored_token} | Received Token: {token}")
 
-            if stored_token != token:
+            if not stored_token or stored_token != token:
+                print(f"❌ Token mismatch for {formatted_phone}")
                 return jsonify({"error": "Invalid or expired reset token"}), 400
 
         if not user:
@@ -536,23 +541,19 @@ def reset_password():
         hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
         user.password_hash = hashed_password
         user.first_login = False  # ✅ Mark reset as complete
-        user.reset_token = None  # ✅ Clear the reset token after successful reset
         db.session.commit()
 
-        # 🔹 Generate a new JWT token after password reset
-        new_token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
-
-        print(f"✅ Password successfully reset for {formatted_phone}")
+        # 🔹 Clear the reset token from the frontend
+        print(f"✅ Password successfully reset for {formatted_phone}. Clearing stored token.")
 
         return jsonify({
             "message": "Password updated successfully. You can now log in.",
-            "token": new_token,  # ✅ Return a new token after reset
-            "first_login": False  # ✅ Ensure first_login is now false
         }), 200
     
     except Exception as e:
         print(f"❌ Reset Password Error: {e}")  # Log error for debugging
         return jsonify({"error": "Something went wrong. Please try again."}), 500
+
 
 
 
