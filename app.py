@@ -537,6 +537,9 @@ import random
 
 
 
+from datetime import datetime, timedelta
+import random
+
 @app.route('/forgot_password', methods=['POST'])
 def forgot_password():
     """Handles Forgot Password Requests Securely"""
@@ -550,26 +553,23 @@ def forgot_password():
 
         print(f"🔍 Received phone number: {phone_number}")
 
-        # ✅ Normalize phone number (handles both cases)
-        normalized_phone = phone_number
-        if phone_number.startswith("0"):  
-            normalized_phone = f"233{phone_number[1:]}"  # Convert `024xxxxxxx` → `23324xxxxxxx`
+        # ✅ Normalize phone number to match DB format
+        if phone_number.startswith("233"):
+            formatted_phone = f"0{phone_number[3:]}"  # Convert `23324xxxxxxx` → `024xxxxxxx`
+        else:
+            formatted_phone = phone_number  # Already in `024xxxxxxx` format
 
-        print(f"🔄 Normalized phone number: {normalized_phone}")
+        print(f"🔄 Normalized phone number: {formatted_phone}")
 
-        # ✅ Debugging: Check how numbers are stored
-        stored_numbers = User.query.with_entities(User.phone_number).all()
-        stored_numbers = [num[0] for num in stored_numbers]
+        # ✅ Debugging: Check stored phone numbers in DB
+        stored_numbers = [num[0] for num in User.query.with_entities(User.phone_number).all()]
         print(f"📋 Stored phone numbers in DB: {stored_numbers}")
 
-        # ✅ Query both formats in database
-        user = User.query.filter(
-            (User.phone_number == phone_number) |  # Original format
-            (User.phone_number == normalized_phone)  # Normalized format
-        ).first()
+        # ✅ Query using the corrected phone format
+        user = User.query.filter_by(phone_number=formatted_phone).first()
 
         if not user:
-            print(f"❌ Phone number {phone_number} (or {normalized_phone}) not registered.")
+            print(f"❌ Phone number {formatted_phone} not registered.")
             return jsonify({"error": "Phone number not registered"}), 404
 
         # ✅ Generate a 6-digit reset token
@@ -597,6 +597,7 @@ def forgot_password():
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
