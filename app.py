@@ -310,38 +310,52 @@ def get_commissions():
 # Authentication
 @app.route('/login', methods=['POST'])
 def login():
-    """ Login using phone number OR username and password. """
+    """Login using phone number OR username and password."""
     data = request.json
     if not data or 'phone_number' not in data or 'password' not in data:
         return jsonify({'error': 'Invalid request'}), 400
 
-    # 🔹 Allow login using either Phone Number OR Username
+    phone_number = data['phone_number'].strip()
+    formatted_phone = f"233{phone_number[1:]}" if phone_number.startswith("0") else phone_number
+
+    print(f"🔍 Searching for user with phone: {phone_number} OR {formatted_phone}")
+
+    # 🔹 Find user by phone number OR username
     user = User.query.filter(
-        (User.phone_number == data['phone_number']) | (User.username == data['phone_number'])
+        (User.phone_number == formatted_phone) | (User.phone_number == phone_number) |
+        (User.username == data['phone_number'])
     ).first()
 
-    if user and bcrypt.check_password_hash(user.password_hash, data['password']):
-        # 🔹 Generate JWT token
-        token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
+    if not user:
+        print(f"❌ User not found for phone: {phone_number} or {formatted_phone}")
+        return jsonify({'error': 'Invalid phone number or password'}), 401
 
-        # 🔹 Check if the user must reset password (Only for first-time users)
-        if user.first_login:
-            return jsonify({
-                'message': 'Password reset required',
-                'reset_required': True,
-                'token': token,  # 🔹 Ensure token is included for reset
-                'first_login': True  # ✅ Explicitly return first_login status
-            }), 403  # Forbidden until password is reset
+    # 🔹 Verify password
+    if not bcrypt.check_password_hash(user.password_hash, data['password']):
+        print(f"❌ Incorrect password for user: {user.phone_number}")
+        return jsonify({'error': 'Invalid phone number or password'}), 401
 
-        # 🔹 Normal login response for manually registered users
+    # 🔹 Generate JWT token
+    token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
+
+    # 🔹 Check if user requires password reset (First-time login)
+    if user.first_login:
+        print(f"🔹 First-time login detected for {user.phone_number}, requiring password reset.")
         return jsonify({
-            'token': token,
-            'role': user.role,
-            'first_name': user.first_name,
-            'first_login': False  # ✅ Explicitly return false for normal users
-        })
+            'message': 'Password reset required',
+            'reset_required': True,
+            'token': token,  # ✅ Token included for reset screen
+            'first_login': True
+        }), 403  # Forbidden until password reset
 
-    return jsonify({'error': 'Invalid credentials'}, 401)
+    # 🔹 Normal login response
+    return jsonify({
+        'token': token,
+        'role': user.role,
+        'first_name': user.first_name,
+        'first_login': False  # ✅ Explicitly return false for normal users
+    })
+
 
 
 
