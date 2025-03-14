@@ -10,31 +10,13 @@ import pandas as pd
 from datetime import date
 from flask_migrate import Migrate  # ✅ Import Flask-Migrate
 from random import randint  # ✅ Import randint for generating OTPs
-from dotenv import load_dotenv
-
-# ✅ Load environment variables from .env
-if os.path.exists(".env"):
-    load_dotenv()
-else:
-    print("⚠️ Warning: .env file not found!")
-
 
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS
 
-# ✅ Load database URL from environment variables
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("❌ DATABASE_URL is not set! Check your .env file or Render settings.")
-
-
 # Load environment variables
-#DATABASE_URL = os.getenv("DATABASE_URL")
-# ✅ Use the correct database URL
-#DATABASE_URL = "postgresql://pdf_manager_db_user:NjU5pim8oEuFD1D0Pb4rwcZwmxN27m1j@dpg-cv136gjqf0us73c3f6p0-a/render.com/pdf_manager_db"
-#DATABASE_URL = "postgresql://pdf_manager_db_user:NjU5pim8oEuFD1D0Pb4rwCzWmxN27m1j@dpg-cv136gjqf0us73c3f6p0-a.oregon-postgres.render.com/pdf_manager_db"
-
+DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -49,9 +31,6 @@ migrate = Migrate(app, db)  # ✅ Initialize Flask-Migrate here
 
 jwt = JWTManager(app)
 bcrypt = Bcrypt(app)
-
-# ✅ Debugging: Print database connection
-print(f"🔍 DATABASE_URL: {DATABASE_URL}")
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -68,7 +47,6 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False, default="agent")  # Default role is agent
     phone_number = db.Column(db.String(20), unique=True, nullable=False, index=True)  # Indexed for faster lookup
     first_login = db.Column(db.Boolean, default=True)
-    reset_token = db.Column(db.String(6), nullable=True)  # ✅ Store reset token
 
 class PDF(db.Model):
     __tablename__ = "pdfs"
@@ -507,63 +485,58 @@ def mark_as_viewed(pdf_id):
 
     return jsonify({'error': 'PDF not found'}), 404
 
-
-
 @app.route('/reset_password', methods=['POST'])
-@jwt_required(optional=True)  # ✅ Optional JWT for first-time login users
+@jwt_required(optional=True)  # ✅ Optional JWT for forgot password users
 def reset_password():
-    """Allows users to reset their password (both first-time users and forgot password users)"""
+    """ Allows users to reset their password (both first-time users and forgot password users) """
     try:
         data = request.json
         phone_number = data.get('phone_number', '').strip()
-        token = data.get("token", "").strip()  # ✅ Ensure reset token is received
         new_password = data.get('new_password', '').strip()
 
-        if not phone_number or not token or not new_password:
-            return jsonify({"error": "Phone number, token, and new password are required"}), 400
-
-        if len(new_password) < 6:
+        if not new_password or len(new_password) < 6:
             return jsonify({"error": "New password must be at least 6 characters"}), 400
 
-        # ✅ Normalize phone number for correct matching
-        formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
-        print(f"🔍 Searching for user with phone number: {formatted_phone}")
+        user = None  # Initialize user variable
 
-        # ✅ Find user in the database
-        user = User.query.filter_by(phone_number=formatted_phone).first()
+        # 🔹 Check if user is resetting password via JWT (first-time login reset)
+        if get_jwt_identity():
+            user_identity = json.loads(get_jwt_identity())
+            user = User.query.get(user_identity['id'])
+        # 🔹 Check if user is resetting password via phone_number (forgot password)
+        elif phone_number:
+            user = User.query.filter_by(phone_number=phone_number).first()
+
         if not user:
-            print(f"❌ User not found for phone: {formatted_phone}")
             return jsonify({"error": "User not found"}), 404
 
-        # ✅ Retrieve stored reset token from DB
-        stored_token = user.reset_token
-        print(f"🔑 Stored Token: {stored_token} | Received Token: {token}")
-
-        if not stored_token or stored_token != token:
-            print(f"❌ Token mismatch for {formatted_phone}")
-            return jsonify({"error": "Invalid or expired reset token"}), 400
-
-        # ✅ Update password and clear the reset token
-        hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
-        user.password_hash = hashed_password
+        # 🔹 Update password and remove first_login flag
+        user.password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
         user.first_login = False  # ✅ Mark reset as complete
-        user.reset_token = None  # ✅ Clear reset token after use
         db.session.commit()
 
-        print(f"✅ Password successfully reset for {formatted_phone}")
+        # 🔹 Generate a new JWT token after password reset
+        new_token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
 
-        return jsonify({"message": "Password updated successfully. You can now log in."}), 200
+        return jsonify({
+            "message": "Password updated successfully. You can now log in.",
+            "token": new_token,  # ✅ Return a new token after reset
+            "first_login": False  # ✅ Ensure first_login is now false
+        }), 200
+    
     except Exception as e:
-        print(f"❌ Reset Password Error: {e}")
+        print(f"❌ Reset Password Error: {e}")  # Log error for debugging
         return jsonify({"error": "Something went wrong. Please try again."}), 500
 
+    
 
-
-
+    from random import randint
 
 from datetime import datetime, timedelta
 import random
 
+from datetime import datetime, timedelta
+import random
 
 @app.route('/forgot_password', methods=['POST'])
 def forgot_password():
@@ -576,30 +549,31 @@ def forgot_password():
         if not phone_number or not channel:
             return jsonify({"error": "Phone number and channel are required"}), 400
 
-        print(f"🔍 Received phone number: {phone_number}")
+        print(f"🔍 Checking phone number: {phone_number}")
 
-        # ✅ Normalize phone number
-        formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
-        print(f"🔄 Normalized phone number: {formatted_phone}")
+        # ✅ Check both formats (with & without country code)
+        user = User.query.filter(
+            (User.phone_number == phone_number) |  
+            (User.phone_number == f"0{phone_number[3:]}" if phone_number.startswith("233") else None)
+        ).first()
 
-        # ✅ Check if user exists
-        user = User.query.filter_by(phone_number=formatted_phone).first()
         if not user:
-            print(f"❌ Phone number {formatted_phone} not registered.")
+            print(f"❌ Phone number {phone_number} not registered.")
             return jsonify({"error": "Phone number not registered"}), 404
 
         # ✅ Generate a 6-digit reset token
         reset_token = str(random.randint(100000, 999999))
+
+        # ✅ Store reset token & expiration time (e.g., 10 minutes validity)
+        user.reset_token = reset_token
+        user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=10)
+        db.session.commit()
+
         print(f"✅ Reset token generated: {reset_token} for {user.phone_number}")
 
-        # ✅ Store reset token in the database
-        user.reset_token = reset_token
-        db.session.commit()
-        print(f"✅ Reset token stored in DB for {formatted_phone}")
-
-        # ✅ Send the token via the selected channel
+        # ✅ Ensure email is fetched from the system, not user input
         if channel == "email":
-            registered_email = f"{user.username}@example.com"
+            registered_email = f"{user.username}@example.com"  # 🔹 Modify based on your system
             print(f"📩 Email sent to {registered_email}: Your reset code is {reset_token}")
 
         elif channel == "sms":
@@ -608,24 +582,11 @@ def forgot_password():
         elif channel == "whatsapp":
             print(f"📩 WhatsApp message sent to {user.phone_number}: Your reset code is {reset_token}")
 
-        # ✅ Return response with the token (for debugging)
-        return jsonify({
-            "message": f"Reset code sent via {channel}",
-            "reset_token": reset_token  # ✅ Now included in response
-        }), 200
+        return jsonify({"message": f"Reset code sent via {channel}"}), 200
 
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
-
-
-
-
-
-
-
-
-
 
 
 
