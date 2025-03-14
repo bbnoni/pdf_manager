@@ -532,9 +532,6 @@ def reset_password():
 
     from random import randint
 
-from datetime import datetime, timedelta
-import random
-
 
 
 from datetime import datetime, timedelta
@@ -553,21 +550,16 @@ def forgot_password():
 
         print(f"🔍 Received phone number: {phone_number}")
 
-        # ✅ Normalize phone number to match DB format
+        # ✅ Normalize phone number
         if phone_number.startswith("233"):
-            formatted_phone = f"0{phone_number[3:]}"  # Convert `23324xxxxxxx` → `024xxxxxxx`
+            formatted_phone = f"0{phone_number[3:]}"
         else:
-            formatted_phone = phone_number  # Already in `024xxxxxxx` format
+            formatted_phone = phone_number
 
         print(f"🔄 Normalized phone number: {formatted_phone}")
 
-        # ✅ Debugging: Check stored phone numbers in DB
-        stored_numbers = [num[0] for num in User.query.with_entities(User.phone_number).all()]
-        print(f"📋 Stored phone numbers in DB: {stored_numbers}")
-
-        # ✅ Query using the corrected phone format
+        # ✅ Check if user exists
         user = User.query.filter_by(phone_number=formatted_phone).first()
-
         if not user:
             print(f"❌ Phone number {formatted_phone} not registered.")
             return jsonify({"error": "Phone number not registered"}), 404
@@ -577,9 +569,9 @@ def forgot_password():
 
         print(f"✅ Reset token generated: {reset_token} for {user.phone_number}")
 
-        # ✅ Send reset token via the chosen channel
+        # ✅ Send the token via the selected channel
         if channel == "email":
-            registered_email = f"{user.username}@example.com"  # 🔹 Modify based on your system
+            registered_email = f"{user.username}@example.com"
             print(f"📩 Email sent to {registered_email}: Your reset code is {reset_token}")
 
         elif channel == "sms":
@@ -588,7 +580,7 @@ def forgot_password():
         elif channel == "whatsapp":
             print(f"📩 WhatsApp message sent to {user.phone_number}: Your reset code is {reset_token}")
 
-        # ✅ Return token in API response so Flutter can store it
+        # ✅ Return token in API response
         return jsonify({
             "message": f"Reset code sent via {channel}",
             "token": reset_token  # 🔹 Now included in the response
@@ -597,6 +589,7 @@ def forgot_password():
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
