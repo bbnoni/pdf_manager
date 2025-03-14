@@ -315,49 +315,33 @@ def login():
     if not data or 'phone_number' not in data or 'password' not in data:
         return jsonify({'error': 'Invalid request'}), 400
 
-    phone_number = data['phone_number'].strip()
-    password = data['password'].strip()
-
-    # ✅ Normalize phone number for correct lookup
-    formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
-
-    print(f"🔍 Searching for user with phone: {phone_number} OR {formatted_phone}")
-
-    # ✅ Check if user exists
+    # 🔹 Allow login using either Phone Number OR Username
     user = User.query.filter(
-        (User.phone_number == phone_number) | (User.phone_number == formatted_phone) | 
-        (User.username == phone_number)
+        (User.phone_number == data['phone_number']) | (User.username == data['phone_number'])
     ).first()
 
-    if not user:
-        print(f"❌ User not found for phone: {phone_number} or {formatted_phone}")
-        return jsonify({"error": "Invalid phone number or password"}), 401
+    if user and bcrypt.check_password_hash(user.password_hash, data['password']):
+        # 🔹 Generate JWT token
+        token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
 
-    # ✅ Verify password
-    if not bcrypt.check_password_hash(user.password_hash, password):
-        print(f"❌ Incorrect password for {user.phone_number}")
-        return jsonify({"error": "Invalid phone number or password"}), 401
+        # 🔹 Check if the user must reset password (Only for first-time users)
+        if user.first_login:
+            return jsonify({
+                'message': 'Password reset required',
+                'reset_required': True,
+                'token': token,  # 🔹 Ensure token is included for reset
+                'first_login': True  # ✅ Explicitly return first_login status
+            }), 403  # Forbidden until password is reset
 
-    # ✅ Force password reset for first-time login users (e.g., managers)
-    if user.first_login:
-        print(f"🔹 User {user.phone_number} requires password reset.")
+        # 🔹 Normal login response for manually registered users
         return jsonify({
-            "message": "Password reset required",
-            "reset_required": True,
-            "first_login": True,
-            "phone_number": user.phone_number  # ✅ Ensures frontend knows user exists
-        }), 403  # Forbidden until password reset
+            'token': token,
+            'role': user.role,
+            'first_name': user.first_name,
+            'first_login': False  # ✅ Explicitly return false for normal users
+        })
 
-    # ✅ Generate JWT token
-    token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
-
-    return jsonify({
-        "message": "Login successful",
-        "token": token,
-        "role": user.role,
-        "first_name": user.first_name,
-        "first_login": False
-    }), 200
+    return jsonify({'error': 'Invalid credentials'}, 401)
 
 
 
@@ -365,10 +349,6 @@ def login():
 
 
 
-
-
-import random
-from datetime import datetime, timedelta
 
 @app.route('/register', methods=['POST'])
 @jwt_required(optional=True)  # ✅ Allow managers to register other managers while allowing public agent sign-ups
@@ -395,13 +375,10 @@ def register():
         username = f"{base_username}{counter}"  # Append number if username exists
         counter += 1
 
-    # ✅ Generate a random 6-digit temporary password
-    temp_password = str(random.randint(100000, 999999))
-    hashed_password = bcrypt.generate_password_hash(temp_password).decode('utf-8')
+    # ✅ Generate a random 6-digit password
+    generated_password = str(random.randint(100000, 999999))
 
-    # ✅ Generate a reset token (valid for 30 minutes)
-    reset_token = str(random.randint(100000, 999999))
-    reset_token_expiry = datetime.utcnow() + timedelta(minutes=30)
+    hashed_password = bcrypt.generate_password_hash(generated_password).decode('utf-8')
 
     # 🔹 Determine if user is self-registering (agent) or being created (manager)
     jwt_identity = get_jwt_identity()
@@ -414,28 +391,25 @@ def register():
         password_hash=hashed_password,
         username=username,  # ✅ Ensure unique username
         role=data['role'].strip().lower(),  # Can be "agent" or "manager"
-        first_login=True,  # ✅ Mark first login as True
-        reset_token=reset_token,  # ✅ Store reset token
-        reset_token_expiry=reset_token_expiry  # ✅ Set token expiry
+        first_login=is_manager_creation  # ✅ True for new managers, False for manually registered agents
     )
 
     db.session.add(new_user)
     db.session.commit()
 
-    # ✅ Log the generated password & reset token for debugging
-    print(f"✅ {data['role'].capitalize()} Created: {data['phone_number']}, Password: {temp_password}, Reset Token: {reset_token}")
+    # ✅ Log the generated password for debugging
+    print(f"✅ {data['role'].capitalize()} Created: {data['phone_number']}, Password: {generated_password}")
 
     # ✅ Send notification via SMS, Email, or WhatsApp
     notify_channel = data.get("notify_channel", "sms")  # Default to SMS
     if notify_channel == "sms":
-        print(f"📩 SMS sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
+        print(f"📩 SMS sent to {data['phone_number']}: Your temporary password is {generated_password}")
     elif notify_channel == "email":
-        print(f"📩 Email sent to {data['phone_number']}@example.com: Your temporary password is {temp_password} and reset code is {reset_token}")
+        print(f"📩 Email sent to {data['phone_number']}@example.com: Your temporary password is {generated_password}")
     elif notify_channel == "whatsapp":
-        print(f"📩 WhatsApp message sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
+        print(f"📩 WhatsApp message sent to {data['phone_number']}: Your temporary password is {generated_password}")
 
     return jsonify({'message': f"{data['role'].capitalize()} registered successfully!"}), 201
-
 
 
 
