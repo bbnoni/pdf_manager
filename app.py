@@ -15,6 +15,10 @@ from random import randint  # ✅ Import randint for generating OTPs
 app = Flask(__name__)
 CORS(app)  # Enable CORS
 
+# ✅ Configure Redis
+app.config["REDIS_URL"] = "redis://localhost:6379/0"
+redis_store = FlaskRedis(app)
+
 # Load environment variables
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
@@ -506,11 +510,7 @@ def reset_password():
         user = None  # Initialize user variable
 
         # ✅ Normalize phone number for correct matching
-        if phone_number.startswith("233"):
-            formatted_phone = f"0{phone_number[3:]}"  # Convert `233244562363` → `0244562363`
-        else:
-            formatted_phone = phone_number
-
+        formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
         print(f"🔍 Searching for user with phone number: {formatted_phone}")
 
         # 🔹 Case 1: First-time login password reset (via JWT)
@@ -526,13 +526,16 @@ def reset_password():
                 print(f"❌ User not found for phone: {formatted_phone}")
                 return jsonify({"error": "User not found"}), 404
 
-            # ✅ Retrieve reset token from frontend request headers
-            stored_token = request.headers.get("X-Reset-Token")  
-            print(f"🔑 Stored Token: {stored_token} | Received Token: {token}")
+            # ✅ Retrieve reset token from Redis
+            stored_token = redis_store.get(f"reset_token:{formatted_phone}")
+            print(f"🔑 Stored Token from Redis: {stored_token} | Received Token: {token}")
 
-            if not stored_token or stored_token != token:
+            if not stored_token or stored_token.decode() != token:
                 print(f"❌ Token mismatch for {formatted_phone}")
                 return jsonify({"error": "Invalid or expired reset token"}), 400
+
+            # ✅ Delete token from Redis after successful validation
+            redis_store.delete(f"reset_token:{formatted_phone}")
 
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -543,27 +546,25 @@ def reset_password():
         user.first_login = False  # ✅ Mark reset as complete
         db.session.commit()
 
-        # 🔹 Frontend should clear the reset token from secure storage
-        print(f"✅ Password successfully reset for {formatted_phone}. Request frontend to clear token.")
+        print(f"✅ Password successfully reset for {formatted_phone}")
 
-        return jsonify({
-            "message": "Password updated successfully. You can now log in.",
-        }), 200
-    
+        return jsonify({"message": "Password updated successfully. You can now log in."}), 200
     except Exception as e:
-        print(f"❌ Reset Password Error: {e}")  # Log error for debugging
+        print(f"❌ Reset Password Error: {e}")
         return jsonify({"error": "Something went wrong. Please try again."}), 500
 
 
 
 
-    
 
-    from random import randint
+    
 
 
 
 from datetime import datetime, timedelta
+import random
+
+from datetime import timedelta
 import random
 
 @app.route('/forgot_password', methods=['POST'])
@@ -580,11 +581,7 @@ def forgot_password():
         print(f"🔍 Received phone number: {phone_number}")
 
         # ✅ Normalize phone number
-        if phone_number.startswith("233"):
-            formatted_phone = f"0{phone_number[3:]}"
-        else:
-            formatted_phone = phone_number
-
+        formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
         print(f"🔄 Normalized phone number: {formatted_phone}")
 
         # ✅ Check if user exists
@@ -595,8 +592,12 @@ def forgot_password():
 
         # ✅ Generate a 6-digit reset token
         reset_token = str(random.randint(100000, 999999))
-
         print(f"✅ Reset token generated: {reset_token} for {user.phone_number}")
+
+        # ✅ Store reset token in Redis (expires in 10 minutes)
+        redis_store.setex(f"reset_token:{formatted_phone}", timedelta(minutes=10), reset_token)
+
+        print(f"🔐 Reset token stored in Redis for {formatted_phone}")
 
         # ✅ Send the token via the selected channel
         if channel == "email":
@@ -609,17 +610,11 @@ def forgot_password():
         elif channel == "whatsapp":
             print(f"📩 WhatsApp message sent to {user.phone_number}: Your reset code is {reset_token}")
 
-        print("🔐 Store this token in the frontend securely!")
-
-        # ✅ FIX: Include token in API response
-        return jsonify({
-            "message": f"Reset code sent via {channel}",
-            "token": reset_token  # ✅ Now included in response
-        }), 200
-
+        return jsonify({"message": f"Reset code sent via {channel}"}), 200
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
