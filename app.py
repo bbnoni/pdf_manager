@@ -540,38 +540,73 @@ def mark_as_viewed(pdf_id):
 
 
 @app.route('/reset_password', methods=['POST'])
-@jwt_required()  # ✅ JWT is required because user is already authenticated
+@jwt_required(optional=True)  # ✅ Allows first-time login users to reset password without token
 def reset_password():
-    """ Allows users to reset their password after first-time login or forgot password. """
+    """ Allows users to reset their password (both first-time users and forgot password users) """
     try:
         data = request.json
+        phone_number = data.get("phone_number", "").strip()
+        token = data.get("token", "").strip()
         new_password = data.get("new_password", "").strip()
 
-        if not new_password or len(new_password) < 6:
+        if not new_password:
+            return jsonify({"error": "New password is required"}), 400
+        if len(new_password) < 6:
             return jsonify({"error": "New password must be at least 6 characters"}), 400
 
-        # ✅ Get User Identity from JWT
-        user_identity = json.loads(get_jwt_identity())
-        user = User.query.get(user_identity['id'])
+        user = None  # Initialize user variable
+        formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
+
+        print(f"🔍 Searching for user with phone: {phone_number} OR {formatted_phone}")
+
+        # ✅ First-time login reset (via JWT)
+        if get_jwt_identity():
+            user_identity = json.loads(get_jwt_identity())
+            user = User.query.get(user_identity['id'])
+            if user:
+                print(f"🔹 First-time login reset for {user.phone_number}")
+        
+        # ✅ Forgot password reset (via phone number + token)
+        elif formatted_phone and token:
+            user = User.query.filter(
+                (User.phone_number == formatted_phone) | (User.phone_number == phone_number)
+            ).first()
+
+            if not user:
+                print(f"❌ User not found for phone: {phone_number} or {formatted_phone}")
+                return jsonify({"error": "User not found"}), 404
+
+            # ✅ Verify token
+            if not user.reset_token or user.reset_token != token:
+                print(f"❌ Invalid reset token for {user.phone_number}")
+                return jsonify({"error": "Invalid reset token"}), 400
+
+            # ✅ Check token expiration
+            if not user.reset_token_expiry or datetime.utcnow() > user.reset_token_expiry:
+                print(f"❌ Reset token expired for {user.phone_number}")
+                return jsonify({"error": "Reset token has expired"}), 400
+
+            # ✅ Clear the token after successful validation
+            user.reset_token = None
+            user.reset_token_expiry = None
 
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        # ✅ Hash new password & update user
+        # ✅ Hash new password & save
         hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
         user.password_hash = hashed_password
-        user.first_login = False  # ✅ Mark password reset as complete
+        user.first_login = False  # ✅ Mark reset as complete
         db.session.commit()
 
         print(f"✅ Password successfully reset for {user.phone_number}")
 
-        return jsonify({
-            "message": "Password updated successfully. You can now log in."
-        }), 200
+        return jsonify({"message": "Password updated successfully. You can now log in."}), 200
 
     except Exception as e:
-        print(f"❌ Reset Password Error: {e}")
+        print(f"❌ Reset Password Error: {e}")  
         return jsonify({"error": "Something went wrong. Please try again."}), 500
+
 
 
 
