@@ -22,4 +22,5 @@ zipp==3.21.0
 pandas  
 openpyxl
 flask-migrate
+redis
 
