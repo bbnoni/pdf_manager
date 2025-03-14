@@ -316,18 +316,23 @@ def login():
         return jsonify({'error': 'Invalid request'}), 400
 
     phone_number = data['phone_number'].strip()
+
+    # 🔹 Convert to both possible formats
     formatted_phone = f"233{phone_number[1:]}" if phone_number.startswith("0") else phone_number
+    alt_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
 
-    print(f"🔍 Searching for user with phone: {phone_number} OR {formatted_phone}")
+    print(f"🔍 Searching for user with phone: {phone_number}, {formatted_phone}, OR {alt_phone}")
 
-    # 🔹 Find user by phone number OR username
+    # 🔹 Search for user with both possible phone formats and username
     user = User.query.filter(
-        (User.phone_number == formatted_phone) | (User.phone_number == phone_number) |
-        (User.username == data['phone_number'])
+        (User.phone_number == formatted_phone) |
+        (User.phone_number == alt_phone) |
+        (User.phone_number == phone_number) |
+        (User.username == phone_number)
     ).first()
 
     if not user:
-        print(f"❌ User not found for phone: {phone_number} or {formatted_phone}")
+        print(f"❌ User not found for phone: {phone_number} or {formatted_phone} or {alt_phone}")
         return jsonify({'error': 'Invalid phone number or password'}), 401
 
     # 🔹 Verify password
