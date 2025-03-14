@@ -485,13 +485,16 @@ def mark_as_viewed(pdf_id):
 
     return jsonify({'error': 'PDF not found'}), 404
 
+
+
 @app.route('/reset_password', methods=['POST'])
-@jwt_required(optional=True)  # ✅ Optional JWT for forgot password users
+@jwt_required(optional=True)  # ✅ Optional JWT for first-time login users
 def reset_password():
-    """ Allows users to reset their password (both first-time users and forgot password users) """
+    """Allows users to reset their password (both first-time users and forgot password users)"""
     try:
         data = request.json
         phone_number = data.get('phone_number', '').strip()
+        token = data.get("token", "").strip()  # ✅ Added reset token
         new_password = data.get('new_password', '').strip()
 
         if not new_password or len(new_password) < 6:
@@ -499,24 +502,39 @@ def reset_password():
 
         user = None  # Initialize user variable
 
-        # 🔹 Check if user is resetting password via JWT (first-time login reset)
+        # 🔹 Case 1: First-time login password reset (via JWT)
         if get_jwt_identity():
             user_identity = json.loads(get_jwt_identity())
             user = User.query.get(user_identity['id'])
-        # 🔹 Check if user is resetting password via phone_number (forgot password)
-        elif phone_number:
+
+        # 🔹 Case 2: Forgot password reset (via phone number + token)
+        elif phone_number and token:
             user = User.query.filter_by(phone_number=phone_number).first()
+
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            # ✅ Check if the token is correct (since it's not stored in DB, match with frontend-stored one)
+            stored_token = user.reset_token  # 🔹 Ensure reset_token is being stored in the `forgot_password` route
+            print(f"🔑 Stored Token: {stored_token} | Received Token: {token}")
+
+            if stored_token != token:
+                return jsonify({"error": "Invalid or expired reset token"}), 400
 
         if not user:
             return jsonify({"error": "User not found"}), 404
 
         # 🔹 Update password and remove first_login flag
-        user.password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        user.password_hash = hashed_password
         user.first_login = False  # ✅ Mark reset as complete
+        user.reset_token = None  # ✅ Clear the reset token after successful reset
         db.session.commit()
 
         # 🔹 Generate a new JWT token after password reset
         new_token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
+
+        print(f"✅ Password successfully reset for {phone_number}")
 
         return jsonify({
             "message": "Password updated successfully. You can now log in.",
@@ -527,6 +545,7 @@ def reset_password():
     except Exception as e:
         print(f"❌ Reset Password Error: {e}")  # Log error for debugging
         return jsonify({"error": "Something went wrong. Please try again."}), 500
+
 
     
 
