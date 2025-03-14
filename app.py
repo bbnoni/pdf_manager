@@ -607,11 +607,16 @@ def forgot_password():
         elif channel == "whatsapp":
             print(f"📩 WhatsApp message sent to {user.phone_number}: Your reset code is {reset_token}")
 
-        return jsonify({"message": f"Reset code sent via {channel}"}), 200
+        # ✅ Return the token in the API response
+        return jsonify({
+            "message": f"Reset code sent via {channel}",
+            "reset_token": reset_token  # ✅ Now explicitly included in the response
+        }), 200
 
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
