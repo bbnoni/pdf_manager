@@ -494,7 +494,7 @@ def reset_password():
     try:
         data = request.json
         phone_number = data.get('phone_number', '').strip()
-        token = data.get("token", "").strip()  # ✅ Added reset token
+        token = data.get("token", "").strip()  # ✅ Ensure reset token is received
         new_password = data.get('new_password', '').strip()
 
         if not phone_number or not token or not new_password:
@@ -526,8 +526,8 @@ def reset_password():
                 print(f"❌ User not found for phone: {formatted_phone}")
                 return jsonify({"error": "User not found"}), 404
 
-            # ✅ Retrieve stored reset token from frontend storage
-            stored_token = request.headers.get("X-Reset-Token")  # 🔹 Frontend should send token in headers
+            # ✅ Retrieve reset token from frontend request headers
+            stored_token = request.headers.get("X-Reset-Token")  
             print(f"🔑 Stored Token: {stored_token} | Received Token: {token}")
 
             if not stored_token or stored_token != token:
@@ -543,8 +543,8 @@ def reset_password():
         user.first_login = False  # ✅ Mark reset as complete
         db.session.commit()
 
-        # 🔹 Clear the reset token from the frontend
-        print(f"✅ Password successfully reset for {formatted_phone}. Clearing stored token.")
+        # 🔹 Frontend should clear the reset token from secure storage
+        print(f"✅ Password successfully reset for {formatted_phone}. Request frontend to clear token.")
 
         return jsonify({
             "message": "Password updated successfully. You can now log in.",
