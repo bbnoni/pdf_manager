@@ -371,80 +371,70 @@ import random
 from datetime import datetime, timedelta
 
 @app.route('/register', methods=['POST'])
-@jwt_required(optional=True)  # ✅ Optional JWT for manager-created users
+@jwt_required(optional=True)  # ✅ Allow managers to register other managers while allowing public agent sign-ups
 def register():
     """ Register a new agent or manager. 
         - Agents who register manually get `first_login = False`
         - Managers created by an existing manager get `first_login = True` 
     """
-    try:
-        data = request.json
-        required_fields = ['first_name', 'last_name', 'phone_number', 'role']
+    data = request.json
+    required_fields = ['first_name', 'last_name', 'phone_number', 'role']
 
-        if not all(field in data for field in required_fields):
-            return jsonify({'error': 'Missing required fields'}), 400
+    if not all(field in data for field in required_fields):
+        return jsonify({'error': 'Missing required fields'}), 400
 
-        if User.query.filter_by(phone_number=data['phone_number']).first():
-            return jsonify({'error': 'Phone number already registered'}), 409
+    if User.query.filter_by(phone_number=data['phone_number']).first():
+        return jsonify({'error': 'Phone number already registered'}), 409
 
-        # 🔹 Ensure username is unique
-        base_username = f"{data['first_name'].lower()}.{data['last_name'].lower()}".replace(" ", "_")
-        username = base_username
-        counter = 1
+    # 🔹 Ensure username is unique
+    base_username = f"{data['first_name'].lower()}.{data['last_name'].lower()}".replace(" ", "_")
+    username = base_username
+    counter = 1
 
-        while User.query.filter_by(username=username).first():
-            username = f"{base_username}{counter}"  # Append number if username exists
-            counter += 1
+    while User.query.filter_by(username=username).first():
+        username = f"{base_username}{counter}"  # Append number if username exists
+        counter += 1
 
-        # ✅ Generate a random 6-digit password
-        temp_password = str(random.randint(100000, 999999))
-        hashed_password = bcrypt.generate_password_hash(temp_password).decode('utf-8')
+    # ✅ Generate a random 6-digit temporary password
+    temp_password = str(random.randint(100000, 999999))
+    hashed_password = bcrypt.generate_password_hash(temp_password).decode('utf-8')
 
-        # ✅ Generate a reset token (valid for 30 minutes)
-        reset_token = str(random.randint(100000, 999999))
-        reset_token_expiry = datetime.utcnow() + timedelta(minutes=30)
+    # ✅ Generate a reset token (valid for 30 minutes)
+    reset_token = str(random.randint(100000, 999999))
+    reset_token_expiry = datetime.utcnow() + timedelta(minutes=30)
 
-        # 🔹 Determine if a manager is creating another manager
-        jwt_identity = get_jwt_identity()
-        is_manager_creation = jwt_identity and json.loads(jwt_identity).get("role") == "manager"
+    # 🔹 Determine if user is self-registering (agent) or being created (manager)
+    jwt_identity = get_jwt_identity()
+    is_manager_creation = jwt_identity and json.loads(jwt_identity).get("role") == "manager"
 
-        # ✅ Allow public registration for `agents`, but restrict `managers` to admin users
-        if data['role'].strip().lower() == "manager" and not is_manager_creation:
-            return jsonify({"error": "Unauthorized. Only managers can create other managers."}), 403
+    new_user = User(
+        first_name=data['first_name'].strip(),
+        last_name=data['last_name'].strip(),
+        phone_number=data['phone_number'].strip(),
+        password_hash=hashed_password,
+        username=username,  # ✅ Ensure unique username
+        role=data['role'].strip().lower(),  # Can be "agent" or "manager"
+        first_login=True,  # ✅ Mark first login as True
+        reset_token=reset_token,  # ✅ Store reset token
+        reset_token_expiry=reset_token_expiry  # ✅ Set token expiry
+    )
 
-        new_user = User(
-            first_name=data['first_name'].strip(),
-            last_name=data['last_name'].strip(),
-            phone_number=data['phone_number'].strip(),
-            password_hash=hashed_password,
-            username=username,  # ✅ Ensure unique username
-            role=data['role'].strip().lower(),  # Can be "agent" or "manager"
-            first_login=True,  # ✅ Mark first login as True
-            reset_token=reset_token,  # ✅ Store reset token
-            reset_token_expiry=reset_token_expiry  # ✅ Set token expiry
-        )
+    db.session.add(new_user)
+    db.session.commit()
 
-        db.session.add(new_user)
-        db.session.commit()
+    # ✅ Log the generated password & reset token for debugging
+    print(f"✅ {data['role'].capitalize()} Created: {data['phone_number']}, Password: {temp_password}, Reset Token: {reset_token}")
 
-        # ✅ Log the generated password & reset token for debugging
-        print(f"✅ {data['role'].capitalize()} Created: {data['phone_number']}, Password: {temp_password}, Reset Token: {reset_token}")
+    # ✅ Send notification via SMS, Email, or WhatsApp
+    notify_channel = data.get("notify_channel", "sms")  # Default to SMS
+    if notify_channel == "sms":
+        print(f"📩 SMS sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
+    elif notify_channel == "email":
+        print(f"📩 Email sent to {data['phone_number']}@example.com: Your temporary password is {temp_password} and reset code is {reset_token}")
+    elif notify_channel == "whatsapp":
+        print(f"📩 WhatsApp message sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
 
-        # ✅ Send notification via SMS, Email, or WhatsApp
-        notify_channel = data.get("notify_channel", "sms")  # Default to SMS
-        if notify_channel == "sms":
-            print(f"📩 SMS sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
-        elif notify_channel == "email":
-            print(f"📩 Email sent to {data['phone_number']}@example.com: Your temporary password is {temp_password} and reset code is {reset_token}")
-        elif notify_channel == "whatsapp":
-            print(f"📩 WhatsApp message sent to {data['phone_number']}: Your temporary password is {temp_password} and reset code is {reset_token}")
-
-        return jsonify({'message': f"{data['role'].capitalize()} registered successfully!"}), 201
-
-    except Exception as e:
-        print(f"❌ Register Error: {e}")  # Log error for debugging
-        return jsonify({"error": "Something went wrong. Please try again."}), 500
-
+    return jsonify({'message': f"{data['role'].capitalize()} registered successfully!"}), 201
 
 
 
@@ -542,35 +532,35 @@ def reset_password():
         token = data.get("token", "").strip()
         new_password = data.get("new_password", "").strip()
 
-        if not phone_number or not new_password:
-            return jsonify({"error": "Phone number and new password are required"}), 400
+        if not phone_number or not token or not new_password:
+            return jsonify({"error": "Phone number, token, and new password are required"}), 400
 
         if len(new_password) < 6:
             return jsonify({"error": "New password must be at least 6 characters"}), 400
+
+        user = None  # Initialize user variable
 
         # ✅ Normalize phone number format
         formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
 
         print(f"🔍 Searching for user with phone: {phone_number} OR {formatted_phone}")
 
-        # ✅ Retrieve user based on phone number
-        user = User.query.filter(
-            (User.phone_number == formatted_phone) | (User.phone_number == phone_number)
-        ).first()
-
-        if not user:
-            print(f"❌ User not found for phone: {phone_number} or {formatted_phone}")
-            return jsonify({"error": "User not found"}), 404
-
-        # ✅ Handle first-time login reset (via JWT)
+        # ✅ First-time login reset (via JWT)
         if get_jwt_identity():
             user_identity = json.loads(get_jwt_identity())
-            if user.id != user_identity["id"]:
-                return jsonify({"error": "Unauthorized request"}), 403
+            user = User.query.get(user_identity['id'])
 
-        # ✅ Handle forgot password reset (via token)
-        elif token:
-            # ✅ Verify reset token
+        # ✅ Forgot password reset (via phone number + token)
+        elif formatted_phone and token:
+            user = User.query.filter(
+                (User.phone_number == formatted_phone) | (User.phone_number == phone_number)
+            ).first()
+
+            if not user:
+                print(f"❌ User not found for phone: {phone_number} or {formatted_phone}")
+                return jsonify({"error": "User not found"}), 404
+
+            # ✅ Verify token
             if not user.reset_token or user.reset_token != token:
                 print(f"❌ Invalid reset token for {user.phone_number}")
                 return jsonify({"error": "Invalid reset token"}), 400
@@ -584,24 +574,13 @@ def reset_password():
             user.reset_token = None
             user.reset_token_expiry = None
 
-        elif user.first_login:
-            # ✅ First-time login users must use the token generated at registration
-            if not user.reset_token:
-                print(f"❌ No reset token found for {user.phone_number}")
-                return jsonify({"error": "Reset token required for first-time login"}), 400
+        if not user:
+            return jsonify({"error": "User not found"}), 404
 
-            # ✅ Allow first-time users to reset without needing to re-enter token
-            print(f"✅ First-time user {user.phone_number} resetting password")
-
-        else:
-            return jsonify({"error": "Invalid request"}), 400
-
-        # ✅ Hash new password & update user record
+        # ✅ Hash new password & save
         hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
         user.password_hash = hashed_password
         user.first_login = False  # ✅ Mark reset as complete
-        user.reset_token = None  # ✅ Clear reset token
-        user.reset_token_expiry = None
         db.session.commit()
 
         print(f"✅ Password successfully reset for {user.phone_number}")
@@ -611,7 +590,6 @@ def reset_password():
     except Exception as e:
         print(f"❌ Reset Password Error: {e}")  
         return jsonify({"error": "Something went wrong. Please try again."}), 500
-
 
 
 
