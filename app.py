@@ -581,10 +581,14 @@ def forgot_password():
         # ✅ Normalize phone number
         formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
 
-        # ✅ Check if user exists
-        user = User.query.filter_by(phone_number=formatted_phone).first()
+        # ✅ Check if user exists (either format)
+        user = User.query.filter(
+            (User.phone_number == phone_number) | 
+            (User.phone_number == formatted_phone)
+        ).first()
+
         if not user:
-            print(f"❌ Phone number {formatted_phone} not registered.")
+            print(f"❌ Phone number {phone_number} not registered.")
             return jsonify({"error": "Phone number not registered"}), 404
 
         # ✅ Generate a 6-digit reset token
@@ -608,11 +612,15 @@ def forgot_password():
         elif channel == "whatsapp":
             print(f"📩 WhatsApp message sent to {user.phone_number}: Your reset code is {reset_token}")
 
-        return jsonify({"message": f"Reset code sent via {channel}"}), 200
+        return jsonify({
+            "message": f"Reset code sent via {channel}",
+            "reset_token": reset_token  # ✅ Now included in response
+        }), 200
 
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
