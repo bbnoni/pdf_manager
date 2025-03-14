@@ -529,29 +529,30 @@ def reset_password():
         formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
         print(f"🔍 Searching for user with phone number: {formatted_phone}")
 
-        # ✅ Find user by phone number
+        # ✅ Find user in the database
         user = User.query.filter_by(phone_number=formatted_phone).first()
-
         if not user:
             print(f"❌ User not found for phone: {formatted_phone}")
             return jsonify({"error": "User not found"}), 404
 
-        # ✅ Validate token from the database
-        if not user.reset_token or user.reset_token != token:
-            print(f"❌ Invalid or expired reset token for {formatted_phone}")
+        # ✅ Retrieve stored reset token from DB
+        stored_token = user.reset_token
+        print(f"🔑 Stored Token: {stored_token} | Received Token: {token}")
+
+        if not stored_token or stored_token != token:
+            print(f"❌ Token mismatch for {formatted_phone}")
             return jsonify({"error": "Invalid or expired reset token"}), 400
 
-        # ✅ Reset password and clear the reset token
+        # ✅ Update password and clear the reset token
         hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
         user.password_hash = hashed_password
         user.first_login = False  # ✅ Mark reset as complete
-        user.reset_token = None  # ✅ Clear the reset token after successful reset
+        user.reset_token = None  # ✅ Clear reset token after use
         db.session.commit()
 
         print(f"✅ Password successfully reset for {formatted_phone}")
 
         return jsonify({"message": "Password updated successfully. You can now log in."}), 200
-
     except Exception as e:
         print(f"❌ Reset Password Error: {e}")
         return jsonify({"error": "Something went wrong. Please try again."}), 500
@@ -559,9 +560,9 @@ def reset_password():
 
 
 
+
 from datetime import datetime, timedelta
 import random
-
 
 
 @app.route('/forgot_password', methods=['POST'])
@@ -594,7 +595,7 @@ def forgot_password():
         # ✅ Store reset token in the database
         user.reset_token = reset_token
         db.session.commit()
-        print(f"🔐 Reset token stored in the database for {formatted_phone}")
+        print(f"✅ Reset token stored in DB for {formatted_phone}")
 
         # ✅ Send the token via the selected channel
         if channel == "email":
@@ -607,15 +608,16 @@ def forgot_password():
         elif channel == "whatsapp":
             print(f"📩 WhatsApp message sent to {user.phone_number}: Your reset code is {reset_token}")
 
-        # ✅ Return the token in the API response
+        # ✅ Return response with the token (for debugging)
         return jsonify({
             "message": f"Reset code sent via {channel}",
-            "reset_token": reset_token  # ✅ Now explicitly included in the response
+            "reset_token": reset_token  # ✅ Now included in response
         }), 200
 
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+
 
 
 
