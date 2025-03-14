@@ -47,6 +47,9 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False, default="agent")  # Default role is agent
     phone_number = db.Column(db.String(20), unique=True, nullable=False, index=True)  # Indexed for faster lookup
     first_login = db.Column(db.Boolean, default=True)
+    reset_token = db.Column(db.String(6), nullable=True)  # Store 6-digit reset code
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)  # Expiry timestamp
+    
 
 class PDF(db.Model):
     __tablename__ = "pdfs"
@@ -485,48 +488,71 @@ def mark_as_viewed(pdf_id):
 
     return jsonify({'error': 'PDF not found'}), 404
 
+
+
+
 @app.route('/reset_password', methods=['POST'])
-@jwt_required(optional=True)  # ✅ Optional JWT for forgot password users
+@jwt_required(optional=True)  # ✅ Optional JWT for first-time login users
 def reset_password():
     """ Allows users to reset their password (both first-time users and forgot password users) """
     try:
         data = request.json
-        phone_number = data.get('phone_number', '').strip()
-        new_password = data.get('new_password', '').strip()
+        phone_number = data.get("phone_number", "").strip()
+        token = data.get("token", "").strip()
+        new_password = data.get("new_password", "").strip()
 
-        if not new_password or len(new_password) < 6:
+        if not phone_number or not token or not new_password:
+            return jsonify({"error": "Phone number, token, and new password are required"}), 400
+
+        if len(new_password) < 6:
             return jsonify({"error": "New password must be at least 6 characters"}), 400
 
         user = None  # Initialize user variable
 
-        # 🔹 Check if user is resetting password via JWT (first-time login reset)
+        # ✅ Normalize phone number
+        formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
+
+        # ✅ First-time login reset (via JWT)
         if get_jwt_identity():
             user_identity = json.loads(get_jwt_identity())
             user = User.query.get(user_identity['id'])
-        # 🔹 Check if user is resetting password via phone_number (forgot password)
-        elif phone_number:
-            user = User.query.filter_by(phone_number=phone_number).first()
+
+        # ✅ Forgot password reset (via token)
+        elif formatted_phone and token:
+            user = User.query.filter_by(phone_number=formatted_phone).first()
+
+            if not user:
+                print(f"❌ User not found for phone: {formatted_phone}")
+                return jsonify({"error": "User not found"}), 404
+
+            # ✅ Verify token
+            if not user.reset_token or user.reset_token != token:
+                return jsonify({"error": "Invalid reset token"}), 400
+
+            if not user.reset_token_expiry or datetime.utcnow() > user.reset_token_expiry:
+                return jsonify({"error": "Reset token has expired"}), 400
+
+            # ✅ Clear the token after successful validation
+            user.reset_token = None
+            user.reset_token_expiry = None
 
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        # 🔹 Update password and remove first_login flag
-        user.password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        # ✅ Hash new password & save
+        hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        user.password_hash = hashed_password
         user.first_login = False  # ✅ Mark reset as complete
         db.session.commit()
 
-        # 🔹 Generate a new JWT token after password reset
-        new_token = create_access_token(identity=json.dumps({'id': user.id, 'role': user.role}))
+        print(f"✅ Password successfully reset for {formatted_phone}")
 
-        return jsonify({
-            "message": "Password updated successfully. You can now log in.",
-            "token": new_token,  # ✅ Return a new token after reset
-            "first_login": False  # ✅ Ensure first_login is now false
-        }), 200
-    
+        return jsonify({"message": "Password updated successfully. You can now log in."}), 200
+
     except Exception as e:
-        print(f"❌ Reset Password Error: {e}")  # Log error for debugging
+        print(f"❌ Reset Password Error: {e}")  
         return jsonify({"error": "Something went wrong. Please try again."}), 500
+
 
     
 
@@ -534,6 +560,7 @@ def reset_password():
 
 from datetime import datetime, timedelta
 import random
+
 
 from datetime import datetime, timedelta
 import random
@@ -551,29 +578,28 @@ def forgot_password():
 
         print(f"🔍 Checking phone number: {phone_number}")
 
-        # ✅ Check both formats (with & without country code)
-        user = User.query.filter(
-            (User.phone_number == phone_number) |  
-            (User.phone_number == f"0{phone_number[3:]}" if phone_number.startswith("233") else None)
-        ).first()
+        # ✅ Normalize phone number
+        formatted_phone = f"0{phone_number[3:]}" if phone_number.startswith("233") else phone_number
 
+        # ✅ Check if user exists
+        user = User.query.filter_by(phone_number=formatted_phone).first()
         if not user:
-            print(f"❌ Phone number {phone_number} not registered.")
+            print(f"❌ Phone number {formatted_phone} not registered.")
             return jsonify({"error": "Phone number not registered"}), 404
 
         # ✅ Generate a 6-digit reset token
         reset_token = str(random.randint(100000, 999999))
 
-        # ✅ Store reset token & expiration time (e.g., 10 minutes validity)
+        # ✅ Store token & set expiration (valid for 10 minutes)
         user.reset_token = reset_token
         user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=10)
         db.session.commit()
 
-        print(f"✅ Reset token generated: {reset_token} for {user.phone_number}")
+        print(f"✅ Reset token {reset_token} generated for {user.phone_number}")
 
-        # ✅ Ensure email is fetched from the system, not user input
+        # ✅ Send the token via the selected channel
         if channel == "email":
-            registered_email = f"{user.username}@example.com"  # 🔹 Modify based on your system
+            registered_email = f"{user.username}@example.com"
             print(f"📩 Email sent to {registered_email}: Your reset code is {reset_token}")
 
         elif channel == "sms":
@@ -587,10 +613,6 @@ def forgot_password():
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
-
-
-
-
 
 
 
