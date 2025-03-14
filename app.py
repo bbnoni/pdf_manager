@@ -10,6 +10,7 @@ import pandas as pd
 from datetime import date
 from flask_migrate import Migrate  # ✅ Import Flask-Migrate
 from random import randint  # ✅ Import randint for generating OTPs
+from werkzeug.security import generate_password_hash
 
 
 
