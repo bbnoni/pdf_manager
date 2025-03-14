@@ -10,14 +10,16 @@ import pandas as pd
 from datetime import date
 from flask_migrate import Migrate  # ✅ Import Flask-Migrate
 from random import randint  # ✅ Import randint for generating OTPs
+import redis
+
 
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS
 
-# ✅ Configure Redis
 app.config["REDIS_URL"] = "redis://localhost:6379/0"
-redis_store = FlaskRedis(app)
+redis_store = redis.Redis.from_url(app.config["REDIS_URL"])
+
 
 # Load environment variables
 DATABASE_URL = os.getenv("DATABASE_URL")
