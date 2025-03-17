@@ -25,6 +25,7 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY", "your_fallback_secret_key")
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=30)
 app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), "uploads")
 
 db = SQLAlchemy(app)
