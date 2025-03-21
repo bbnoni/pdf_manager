@@ -72,6 +72,7 @@ class Commission(db.Model):
     amount = db.Column(db.Float, nullable=False)
     date = db.Column(db.Date, default=date.today)
     commission_period = db.Column(db.String(50), nullable=False)  # 🔹 Added field
+    
 
     # **Additional Fields from the Excel Sheet**
      # ✅ Add missing fields from Excel
@@ -675,13 +676,13 @@ def fetch_commissions():
 
     query = Commission.query.filter_by(commission_period=commission_period)
     if user_id:
-        query = query.filter_by(user_id=user_id)
+        query = query.filter_by(agent_id=user_id)
 
     commissions = query.all()
 
     result = []
     for c in commissions:
-        user = User.query.get(c.user_id)
+        user = User.query.get(c.agent_id)  # ✅ Updated here
         result.append({
             'id': c.id,
             'amount': c.amount,
@@ -690,6 +691,7 @@ def fetch_commissions():
         })
 
     return jsonify(result), 200
+
 
 
 
