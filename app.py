@@ -662,6 +662,56 @@ def forgot_password():
     except Exception as e:
         print(f"❌ Forgot Password Error: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+    
+
+@app.route('/fetch_commissions', methods=['GET'])
+@jwt_required()
+def fetch_commissions():
+    """Preview commissions before deleting."""
+    commission_period = request.args.get('commission_period')
+    user_id = request.args.get('user_id')
+
+    if not commission_period:
+        return jsonify({'error': 'Missing commission period'}), 400
+
+    query = Commission.query.filter_by(commission_period=commission_period)
+
+    if user_id:
+        query = query.filter_by(user_id=user_id)
+
+    commissions = query.all()
+
+    result = [{
+        'id': c.id,
+        'amount': c.amount,
+        'date': c.date.strftime('%Y-%m-%d'),
+        'user': f"{c.user.first_name} {c.user.last_name}" if c.user else "N/A"
+    } for c in commissions]
+
+    return jsonify(result), 200
+
+@app.route('/delete_commissions', methods=['DELETE'])
+@jwt_required()
+def delete_commissions():
+    """Delete commissions based on period (optional: filter by user)."""
+    data = request.json
+    commission_period = data.get('commission_period')
+    user_id = data.get('user_id')
+
+    if not commission_period:
+        return jsonify({'error': 'Commission period is required'}), 400
+
+    query = Commission.query.filter_by(commission_period=commission_period)
+
+    if user_id:
+        query = query.filter_by(user_id=user_id)
+
+    count = query.delete(synchronize_session=False)
+    db.session.commit()
+
+    return jsonify({'message': f'{count} commissions deleted'}), 200
+
+
 
 
 
