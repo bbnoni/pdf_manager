@@ -716,6 +716,14 @@ def delete_commissions():
 
     return jsonify({'message': f'Successfully deleted {count} commission(s).'}), 200
 
+@app.route('/get_commission_periods', methods=['GET'])
+@jwt_required()
+def get_commission_periods():
+    periods = db.session.query(Commission.commission_period).distinct().all()
+    period_list = [p[0] for p in periods if p[0]]
+    return jsonify(period_list)
+
+
 
 
 
